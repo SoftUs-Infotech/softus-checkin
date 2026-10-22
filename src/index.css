@@ -1,0 +1,240 @@
+@import 'tailwindcss';
+
+/*
+  Design tokens.
+
+  This product replaces the muster roll — the ruled attendance register, one
+  row per person, one column per day, single-letter marks, totals at the foot
+  of the column. The interface takes that document's structure: rules that are
+  real grid lines rather than decoration, a strict baseline, and stamped
+  monospaced figures.
+
+  The rule the whole palette follows: COLOUR IS RESERVED FOR THE RECORD.
+  Buttons, navigation, headings and every surface are ink and paper. The only
+  chromatic pixels on screen belong to the status palette below. An operator
+  scanning for an absence should find the only red thing in view — which is
+  impossible when the interface itself is painted in a brand hue.
+
+  So `brand-*` is a cool near-black ramp, not a colour. It keeps its name and
+  its scale positions because a hundred call sites already reference it, and
+  because "the emphasis ramp" is what it always actually meant.
+*/
+@theme {
+  /* Archivo is utilitarian and form-like; Public Sans was drawn for official
+     government records, which is precisely what an attendance register is.
+     Plex Mono stays: it has the look of a stamped time. */
+  --font-display: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+
+  /* Ink: a blue-black, the way real ink is never neutral grey. */
+  --color-ink-50: #f4f5f6;
+  --color-ink-100: #e5e7ea;
+  --color-ink-200: #cbcfd6;
+  --color-ink-300: #a2a9b6;
+  --color-ink-400: #6e7686;
+  --color-ink-500: #4f5765;
+  --color-ink-600: #3a414d;
+  --color-ink-700: #2a303a;
+  --color-ink-800: #1c2129;
+  --color-ink-900: #12161c;
+  --color-ink-950: #0a0d11;
+
+  /* The emphasis ramp. Deliberately achromatic — see the note above. */
+  --color-brand-50: #f2f3f5;
+  --color-brand-100: #e3e5e9;
+  --color-brand-200: #c7cbd3;
+  --color-brand-300: #9aa1ad;
+  --color-brand-400: #6b7381;
+  --color-brand-500: #4a515d;
+  --color-brand-600: #333944;
+  --color-brand-700: #1e232c;
+  --color-brand-800: #161a21;
+  --color-brand-900: #0f1217;
+
+  /* Barely warm — enough that the page is not clinical, nowhere near cream. */
+  --color-paper: #fafaf8;
+
+  /* The ruling line. Its own token because a rule in this design is structure,
+     not a border: it is the line the record is written on. */
+  --color-rule: #e2e3df;
+
+  /* Attendance status colours. These are the calendar legend, and nothing
+     else in the interface is allowed to use them decoratively. */
+  --color-status-green: #17864b;
+  --color-status-green-soft: #dcf5e7;
+  --color-status-amber: #b45309;
+  --color-status-amber-soft: #fdeed7;
+  --color-status-red: #be1f3c;
+  --color-status-red-soft: #fde4e9;
+  --color-status-violet: #6d3fc4;
+  --color-status-violet-soft: #ede4fb;
+  --color-status-yellow: #8a6a00;
+  --color-status-yellow-soft: #fbf1c9;
+  --color-status-grey: #6e7686;
+  --color-status-grey-soft: #eceef1;
+  --color-status-blue: #1f5fb0;
+  --color-status-blue-soft: #dfebfa;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  * {
+    border-color: var(--color-rule);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink-900);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    /* Archivo is a touch wide by default; pulling it in gives headings the
+       set-tight look of a printed form heading rather than a web hero. */
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+
+  /* Times, durations and table figures are monospaced so columns line up —
+     a timesheet that does not align is a timesheet you cannot scan. */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-ink-200);
+  }
+}
+
+@layer utilities {
+  /* A sheet of the record. Ruled rather than floated: the shadow is almost
+     nothing, because a ledger page does not hover above the desk. */
+  .card {
+    background: #fff;
+    border: 1px solid var(--color-rule);
+    border-radius: 10px;
+    box-shadow: 0 1px 1px rgb(18 22 28 / 0.03);
+  }
+
+  /*
+    The muster mark.
+
+    A single letter in a ruled cell — P, A, H, L — is how attendance has been
+    recorded on paper for a century, and it is still the densest way to show a
+    month of days at a glance. Colour comes from the status palette, so the
+    mark carries meaning twice: by letter and by ink.
+  */
+  .mark {
+    display: grid;
+    place-items: center;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  /* The ruling of the register, as a real background grid. Used behind the
+     month so the cells sit on lines rather than floating in whitespace. */
+  .ruled {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      var(--color-rule) 0 1px,
+      transparent 1px var(--rule-pitch, 2rem)
+    );
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-ink-200) transparent;
+  }
+
+  /* A loading placeholder in the shape of what is coming. The sweep is slow on
+     purpose: a fast shimmer reads as an error state. */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--color-ink-100) 25%,
+      var(--color-ink-50) 37%,
+      var(--color-ink-100) 63%
+    );
+    background-size: 400% 100%;
+    animation: skeleton-sweep 1.4s ease-in-out infinite;
+  }
+
+  /* Motion is used in exactly three places — a dialog arriving, a toast
+     arriving, and a value that has just changed. Anywhere else it is noise. */
+  .modal-backdrop {
+    animation: fade-in 140ms ease-out;
+  }
+
+  .modal-panel {
+    animation: panel-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .toast-enter {
+    animation: toast-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@keyframes skeleton-sweep {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
