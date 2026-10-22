@@ -8,6 +8,7 @@ import { CalendarClock, CalendarDays, Copy, Search, UserPlus, Users } from 'luci
 import { apiDelete, apiGet, apiPatch, apiPost, messageOf } from '@/lib/api'
 import { formatDate, todayKey } from '@/lib/format'
 import { refreshCalendarDependents } from '@/lib/refresh'
+import { useAuth } from '@/store/auth'
 import {
   Badge,
   Button,
@@ -92,6 +93,7 @@ function windowSentence(
 }
 
 export function EmployeesPage() {
+  const myId = useAuth((state) => state.user?.id)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [inviting, setInviting] = useState(false)
@@ -284,6 +286,7 @@ export function EmployeesPage() {
                   <div className="mt-3 flex items-center justify-end gap-1">
                     <EmployeeActions
                       employee={employee}
+                      isSelf={employee.id === myId}
                       onEdit={() => setEditing(employee)}
                       onReinstate={() => setStatus.mutate({ id: employee.id, action: 'activate' })}
                       onConfirm={(intent) => setConfirming({ employee, intent })}
@@ -337,6 +340,7 @@ export function EmployeesPage() {
                       <div className="flex items-center justify-end gap-1">
                         <EmployeeActions
                           employee={employee}
+                          isSelf={employee.id === myId}
                           onEdit={() => setEditing(employee)}
                           onReinstate={() => setStatus.mutate({ id: employee.id, action: 'activate' })}
                           onConfirm={(intent) => setConfirming({ employee, intent })}
@@ -360,10 +364,20 @@ export function EmployeesPage() {
         }
         description={
           confirming?.intent === 'remove'
-            ? 'They lose access immediately and disappear from the register. Attendance already recorded is kept for the audit trail.'
+            ? `${
+                confirming.employee.role === 'ADMIN'
+                  ? 'They lose administrator access immediately'
+                  : 'They lose access immediately'
+              } and disappear from the register. An invitation they have not accepted stops working. Attendance already recorded is kept for the audit trail.`
             : 'They stay in the register but cannot sign in or punch until you reinstate them.'
         }
-        confirmLabel={confirming?.intent === 'remove' ? 'Remove employee' : 'Suspend access'}
+        confirmLabel={
+          confirming?.intent === 'remove'
+            ? confirming.employee.role === 'ADMIN'
+              ? 'Remove administrator'
+              : 'Remove employee'
+            : 'Suspend access'
+        }
         loading={setStatus.isPending || remove.isPending}
         onConfirm={() => {
           if (!confirming) return
@@ -386,11 +400,14 @@ export function EmployeesPage() {
 */
 function EmployeeActions({
   employee,
+  isSelf,
   onEdit,
   onReinstate,
   onConfirm,
 }: {
   employee: User
+  /** Your own row: the API refuses to suspend or remove you, so don't offer it. */
+  isSelf: boolean
   onEdit: () => void
   onReinstate: () => void
   onConfirm: (intent: 'suspend' | 'remove') => void
@@ -408,15 +425,24 @@ function EmployeeActions({
       <Button variant="secondary" size="sm" onClick={onEdit}>
         Edit
       </Button>
-      <RowMenu
-        label={`More actions for ${employee.full_name}`}
-        items={[
-          employee.status === 'SUSPENDED'
-            ? { label: 'Reinstate access', onSelect: onReinstate }
-            : { label: 'Suspend access', onSelect: () => onConfirm('suspend'), danger: true },
-          { label: 'Remove employee', onSelect: () => onConfirm('remove'), danger: true },
-        ]}
-      />
+      {isSelf ? (
+        // Keeps the column aligned with the rows that do have a menu.
+        <span className="inline-block size-8" title="This is you" aria-hidden />
+      ) : (
+        <RowMenu
+          label={`More actions for ${employee.full_name}`}
+          items={[
+            employee.status === 'SUSPENDED'
+              ? { label: 'Reinstate access', onSelect: onReinstate }
+              : { label: 'Suspend access', onSelect: () => onConfirm('suspend'), danger: true },
+            {
+              label: employee.role === 'ADMIN' ? 'Remove administrator' : 'Remove employee',
+              onSelect: () => onConfirm('remove'),
+              danger: true,
+            },
+          ]}
+        />
+      )}
     </>
   )
 }
