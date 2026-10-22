@@ -72,6 +72,8 @@ export type AttendanceStatus =
   | 'UPCOMING'
   /** A day before the employee joined. Nothing was expected of it. */
   | 'BEFORE_JOINING'
+  /** Before the organisation's go-live reset. Nothing on it counts. */
+  | 'NOT_TRACKED'
 
 export interface PunchEvent {
   at: string
@@ -452,6 +454,8 @@ export interface OrgSettings {
   comp_off_expiry_days: number
 
   support_email?: string | null
+  /** The go-live reset: attendance counts from this day. Null until pressed. */
+  tracking_starts_on?: string | null
   timezone: string
   api_version: string
 }

@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { apiGet, apiPatch, messageOf } from '@/lib/api'
+import { apiGet, apiPatch, apiPost, messageOf } from '@/lib/api'
+import { formatDate, todayKey } from '@/lib/format'
 import { refreshCalendarDependents } from '@/lib/refresh'
 import {
   Button,
@@ -13,6 +14,7 @@ import {
   ErrorNote,
   Field,
   Input,
+  Modal,
   PageHeader,
   Select,
   Textarea,
@@ -239,6 +241,8 @@ export function SettingsPage() {
           </div>
         }
       />
+
+      <TrackingStartCard startsOn={data.tracking_starts_on ?? null} />
 
       <form
         id={FORM_ID}
@@ -621,13 +625,7 @@ export function SettingsPage() {
  * the provider actually delegates, and pinning the full address would stop
  * punching by tomorrow morning.
  */
-function ThisConnection({
-  ranges,
-  onAdd,
-}: {
-  ranges: string[]
-  onAdd: (range: string) => void
-}) {
+function ThisConnection({ ranges, onAdd }: { ranges: string[]; onAdd: (range: string) => void }) {
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['settings-network'],
     queryFn: () => apiGet<NetworkView>('/settings/network'),
@@ -707,5 +705,109 @@ const Toggle = function Toggle({
         {hint && <span className="block text-[12px] text-ink-400">{hint}</span>}
       </span>
     </label>
+  )
+}
+
+/**
+ * The go-live "reset".
+ *
+ * Deploying on a working day used to read as a month of absences behind it and
+ * a short day for everybody on the day itself. Resetting makes the chosen day
+ * day one: nothing earlier counts, the day itself is a grace day, and the
+ * ordinary rules begin the next morning. No record is deleted — choosing
+ * another date later is all it takes to undo it.
+ */
+function TrackingStartCard({ startsOn }: { startsOn: string | null }) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [day, setDay] = useState(todayKey())
+  const [error, setError] = useState<string | null>(null)
+
+  const reset = useMutation({
+    mutationFn: () => apiPost<OrgSettings>('/settings/tracking-start', { starts_on: day }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['settings'], updated)
+      refreshCalendarDependents(queryClient)
+      toast.success(`Attendance now counts from ${formatDate(updated.tracking_starts_on)}.`)
+      setError(null)
+      setOpen(false)
+    },
+    onError: (mutationError) => setError(messageOf(mutationError, 'Attendance was not reset.')),
+  })
+
+  return (
+    <Card className="mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold text-ink-900">Attendance start</h2>
+          <p className="mt-0.5 text-[13px] text-ink-500">
+            {startsOn ? (
+              <>
+                Attendance counts from{' '}
+                <span className="font-medium text-ink-800">{formatDate(startsOn)}</span>. Days
+                before it are not tracked and nobody is absent, late or docked for them.
+              </>
+            ) : (
+              'Going live? Reset on launch day so the days before it, and the launch day itself, are not counted against anybody.'
+            )}
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setDay(todayKey())
+            setError(null)
+            setOpen(true)
+          }}
+        >
+          Reset attendance
+        </Button>
+      </div>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Reset attendance"
+        description="Start counting attendance from this day."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => reset.mutate()} loading={reset.isPending} disabled={!day}>
+              Reset from {day ? formatDate(day) : 'this day'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {error && <ErrorNote message={error} />}
+          <Field label="First day that counts" required>
+            <Input
+              type="date"
+              value={day}
+              max={todayKey()}
+              onChange={(event) => setDay(event.target.value)}
+            />
+          </Field>
+          <ul className="list-disc space-y-1.5 pl-5 text-[13px] text-ink-600">
+            <li>
+              Every day before it shows as <span className="font-medium">Not tracked</span>: no
+              absences, late marks or deductions, and no corrections can be filed for it.
+            </li>
+            <li>
+              That day itself is a grace day. Anybody who punched is present, with no late or
+              short-day mark, and nobody who didn&apos;t is absent.
+            </li>
+            <li>
+              From the next day, the usual rules apply. This month&apos;s salary pays the days up to
+              and including it in full.
+            </li>
+            <li>Nothing is deleted. Picking another date later undoes it.</li>
+          </ul>
+        </div>
+      </Modal>
+    </Card>
   )
 }

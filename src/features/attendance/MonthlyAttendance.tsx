@@ -92,7 +92,8 @@ export function MonthlyAttendance({
         (day) =>
           day.status !== 'UPCOMING' &&
           day.status !== 'NOT_STARTED' &&
-          day.status !== 'BEFORE_JOINING',
+          day.status !== 'BEFORE_JOINING' &&
+          day.status !== 'NOT_TRACKED',
       ),
     [data],
   )

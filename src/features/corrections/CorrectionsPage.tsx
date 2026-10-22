@@ -26,7 +26,7 @@ import {
   useToast,
   type BadgeTone,
 } from '@/components/ui'
-import type { Correction, Paginated } from '@/types'
+import type { Correction, OrgSettings, Paginated } from '@/types'
 
 const TYPE_LABELS: Record<string, string> = {
   MISSED_PUNCH_IN: 'Forgot to punch in',
@@ -217,6 +217,13 @@ function RequestModal({ open, onClose }: { open: boolean; onClose: () => void })
   // grounds is not the reader's mistake, so it is shown as a state with a way
   // out rather than as a validation error against the form.
   const [blocked, setBlocked] = useState<string | null>(null)
+  // Days before the go-live reset are not tracked, so there is nothing on
+  // them to correct; the picker should not offer them.
+  const { data: orgSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => apiGet<OrgSettings>('/settings'),
+    enabled: open,
+  })
 
   const {
     register,
@@ -305,7 +312,12 @@ function RequestModal({ open, onClose }: { open: boolean; onClose: () => void })
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Day" error={errors.date?.message} required>
-            <Input type="date" max={todayKey()} {...register('date')} />
+            <Input
+              type="date"
+              min={orgSettings?.tracking_starts_on ?? undefined}
+              max={todayKey()}
+              {...register('date')}
+            />
           </Field>
           <Field label="What happened" error={errors.type?.message} required>
             <Select {...register('type')}>

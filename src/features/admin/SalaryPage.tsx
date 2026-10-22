@@ -60,6 +60,7 @@ const COUNT_LABELS: [string, string][] = [
   ['late_days', 'Late arrivals'],
   ['pending_days', 'Still to come'],
   ['before_joining_days', 'Before joining'],
+  ['untracked_days', 'Before go-live (paid)'],
 ]
 
 /** `48333.33` → `48,333` — a projection does not need paise. */

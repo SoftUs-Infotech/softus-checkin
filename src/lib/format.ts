@@ -266,6 +266,7 @@ export const STATUS_ORDER: AttendanceStatus[] = [
   'NOT_STARTED',
   'UPCOMING',
   'BEFORE_JOINING',
+  'NOT_TRACKED',
 ]
 
 export function approvalChip(status: string): string {

@@ -78,6 +78,7 @@ const MARKS: Record<string, { mark: string; word: string }> = {
   NOT_STARTED: { mark: '·', word: 'Not started' },
   UPCOMING: { mark: '·', word: 'Upcoming' },
   BEFORE_JOINING: { mark: '', word: 'Before joining' },
+  NOT_TRACKED: { mark: '', word: 'Not tracked' },
 }
 
 /* The mark is written in the legend's ink and nothing else in this page is. */

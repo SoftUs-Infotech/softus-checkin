@@ -36,6 +36,7 @@ export const MARKS: Record<string, string> = {
   NOT_STARTED: '',
   UPCOMING: '',
   BEFORE_JOINING: '',
+  NOT_TRACKED: '',
 }
 
 /*
@@ -58,7 +59,7 @@ export function markInk(color: string): string {
 }
 
 /** Days on which nothing was due. They sit back so the working week reads. */
-const NOT_DUE = new Set(['WEEKEND', 'HOLIDAY', 'UPCOMING', 'BEFORE_JOINING'])
+const NOT_DUE = new Set(['WEEKEND', 'HOLIDAY', 'UPCOMING', 'BEFORE_JOINING', 'NOT_TRACKED'])
 
 /** Legend entries, in the order an employee cares about them. */
 const LEGEND: { status: string; label: string }[] = [
