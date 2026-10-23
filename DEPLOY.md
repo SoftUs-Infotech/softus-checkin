@@ -20,8 +20,9 @@ the API first: the build needs its address.
 |---|---|---|
 | `VITE_API_BASE` | `https://api.yourcompany.com/api/v1` | Production |
 
-The value is baked into the bundle at build time, so **redeploy after changing
-it**. A build on Vercel without it **fails on purpose**: without it the app
+`https://api.yourcompany.com` on its own works too, with or without a trailing
+slash: the app adds `/api/v1` when it is missing. The value is baked into the
+bundle at build time, so **redeploy after changing it**. A build on Vercel without it **fails on purpose**: without it the app
 would ship pointing at an `/api` path that doesn't exist on Vercel, and every
 sign-in would fail.
 

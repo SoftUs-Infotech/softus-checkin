@@ -6,7 +6,18 @@ import axios, {
 import { resetCache } from '@/lib/queryClient'
 import { deviceProfileHeader } from './device'
 
-export const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
+/**
+ * Accepts what people actually paste into Vercel — `https://api.example.com`,
+ * the same with a trailing slash, or the full `…/api/v1` — so a near-miss
+ * cannot send every request to a path that does not exist.
+ */
+export function normaliseApiBase(value: string | undefined): string {
+  const trimmed = (value ?? '').trim().replace(/\/+$/, '')
+  if (!trimmed) return '/api/v1'
+  return /\/api\/v\d+$/.test(trimmed) ? trimmed : `${trimmed}/api/v1`
+}
+
+export const API_BASE = normaliseApiBase(import.meta.env.VITE_API_BASE)
 
 /** The envelope every endpoint returns. */
 export interface ApiEnvelope<T> {
