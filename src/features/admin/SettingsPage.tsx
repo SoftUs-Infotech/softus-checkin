@@ -714,8 +714,9 @@ const Toggle = function Toggle({
  * Deploying on a working day used to read as a month of absences behind it and
  * a short day for everybody on the day itself. Resetting makes the chosen day
  * day one: nothing earlier counts, the day itself is a grace day, and the
- * ordinary rules begin the next morning. No record is deleted — choosing
- * another date later is all it takes to undo it.
+ * ordinary rules begin the next morning. Leave restarts with it: every balance
+ * is zero on the day and accrues from there. No record is deleted — choosing
+ * another date later rebuilds everything from that date instead.
  */
 function TrackingStartCard({ startsOn }: { startsOn: string | null }) {
   const queryClient = useQueryClient()
@@ -729,7 +730,11 @@ function TrackingStartCard({ startsOn }: { startsOn: string | null }) {
     onSuccess: (updated) => {
       queryClient.setQueryData(['settings'], updated)
       refreshCalendarDependents(queryClient)
-      toast.success(`Attendance now counts from ${formatDate(updated.tracking_starts_on)}.`)
+      queryClient.invalidateQueries({ queryKey: ['leave-balances'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] })
+      toast.success(
+        `Attendance and leave now count from ${formatDate(updated.tracking_starts_on)}.`,
+      )
       setError(null)
       setOpen(false)
     },
@@ -740,16 +745,17 @@ function TrackingStartCard({ startsOn }: { startsOn: string | null }) {
     <Card className="mb-6">
       <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
         <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold text-ink-900">Attendance start</h2>
+          <h2 className="text-[15px] font-semibold text-ink-900">Attendance and leave start</h2>
           <p className="mt-0.5 text-[13px] text-ink-500">
             {startsOn ? (
               <>
                 Attendance counts from{' '}
                 <span className="font-medium text-ink-800">{formatDate(startsOn)}</span>. Days
-                before it are not tracked and nobody is absent, late or docked for them.
+                before it are not tracked, nobody is absent, late or docked for them, and leave
+                balances started at zero that day.
               </>
             ) : (
-              'Going live? Reset on launch day so the days before it, and the launch day itself, are not counted against anybody.'
+              'Going live? Reset on launch day so the days before it, and the launch day itself, are not counted against anybody, and leave balances start at zero.'
             )}
           </p>
         </div>
@@ -761,15 +767,15 @@ function TrackingStartCard({ startsOn }: { startsOn: string | null }) {
             setOpen(true)
           }}
         >
-          Reset attendance
+          Reset attendance and leave
         </Button>
       </div>
 
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="Reset attendance"
-        description="Start counting attendance from this day."
+        title="Reset attendance and leave"
+        description="Start counting attendance and leave from this day."
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpen(false)}>
@@ -804,7 +810,16 @@ function TrackingStartCard({ startsOn }: { startsOn: string | null }) {
               From the next day, the usual rules apply. This month&apos;s salary pays the days up to
               and including it in full.
             </li>
-            <li>Nothing is deleted. Picking another date later undoes it.</li>
+            <li>
+              Every leave balance restarts at <span className="font-medium">zero</span> on that
+              day. Leave earned, carried over or taken before it no longer counts. From then on each
+              leave type accrues under its own rule, so a monthly type credits only the part of this
+              month that is left.
+            </li>
+            <li>
+              Nothing is deleted. Picking another date later rebuilds attendance and leave from that
+              date. Balances you adjusted by hand need adjusting again.
+            </li>
           </ul>
         </div>
       </Modal>

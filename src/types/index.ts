@@ -337,6 +337,8 @@ export interface LeaveType {
   max_consecutive_days?: number | null
   applicable_after_days: number
   applicable_departments: string[]
+  /** Off keeps the type to administrators: employees neither see nor apply for it. */
+  visible_to_employees: boolean
   color: string
   sort_order: number
   description?: string | null
@@ -354,6 +356,7 @@ export interface LeaveBalance {
   allow_half_day: boolean
   /** Whether the API accepts a request that takes this balance below zero. */
   allow_negative_balance: boolean
+  visible_to_employees?: boolean
   year: number
   allocated: number
   carried_forward: number

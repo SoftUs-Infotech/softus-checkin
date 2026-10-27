@@ -55,6 +55,7 @@ const schema = z
     color: z.string().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Use a hex colour.'),
     is_paid: z.boolean(),
     allow_half_day: z.boolean(),
+    visible_to_employees: z.boolean(),
   })
   .refine((values) => values.carry_forward_max <= values.annual_quota, {
     path: ['carry_forward_max'],
@@ -185,6 +186,7 @@ export function LeaveTypesPage() {
                       {type.min_notice_days > 0 && (
                         <Badge>{type.min_notice_days}d notice</Badge>
                       )}
+                      {!type.visible_to_employees && <Badge tone="amber">Hidden from employees</Badge>}
                       {!type.is_active && <Badge>Retired</Badge>}
                     </span>
                   </Td>
@@ -284,6 +286,7 @@ function LeaveTypeModal({
       color: leaveType?.color ?? '#2563eb',
       is_paid: leaveType?.is_paid ?? true,
       allow_half_day: leaveType?.allow_half_day ?? true,
+      visible_to_employees: leaveType?.visible_to_employees ?? true,
     },
   })
 
@@ -488,6 +491,17 @@ function LeaveTypeModal({
           >
             <Input type="number" min="0" className="tabular" {...register('min_notice_days')} />
           </Field>
+        </section>
+
+        <section className="space-y-3 border-t border-ink-100 pt-4">
+          <SectionLabel>Who can see it</SectionLabel>
+          <div className="rounded-lg border border-ink-100 px-3 py-3">
+            <Check
+              label="Employees can see and apply for it"
+              hint="Turn off to keep this type to administrators: it disappears from employees' leave page and balances, and they cannot apply for it. It still accrues, so turning it back on shows the right balance."
+              {...register('visible_to_employees')}
+            />
+          </div>
         </section>
 
         <section className="space-y-3 border-t border-ink-100 pt-4">
