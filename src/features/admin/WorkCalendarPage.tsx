@@ -30,7 +30,8 @@ const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
   The Saturday pattern lives in Settings because it is policy. This page is for
   the exceptions: opening a day by hand, closing one, and swapping a pair so the
   month keeps the same number of working days — which is what keeps everybody's
-  per-day rate honest.
+  per-day rate honest. And counting a day as a full day for everybody who came
+  in, for the Saturday the office opens for three hours on purpose.
 */
 
 export function WorkCalendarPage() {
@@ -157,6 +158,31 @@ export function WorkCalendarPage() {
     },
     onError: (mutationError) => {
       const message = messageOf(mutationError, 'The holiday was not removed.')
+      setError(message)
+      toast.error(message)
+    },
+  })
+
+  // A short day the owner chose: whoever came in gets a full day, whatever the
+  // clock says. Re-judged on the server for everybody, so the register, every
+  // month and the salary projection all move — hence the full refresh.
+  const fullDay = useMutation({
+    mutationFn: ({ date, on, reason }: { date: string; on: boolean; reason: string }) =>
+      on
+        ? apiPost('/work-calendar/full-days', { date, reason })
+        : apiDelete(`/work-calendar/full-days/${date}`),
+    onSuccess: (_, { on }) => {
+      refresh()
+      setSelected(null)
+      setError(null)
+      toast.success(
+        on
+          ? 'Counted as a full day for everybody who came in.'
+          : 'The day is judged by hours worked again.',
+      )
+    },
+    onError: (mutationError) => {
+      const message = messageOf(mutationError, 'The day was not changed.')
       setError(message)
       toast.error(message)
     },
@@ -314,13 +340,14 @@ export function WorkCalendarPage() {
                         holiday that had somehow gone green. */}
                     {(entry.source === 'OVERRIDE' ||
                       entry.source === 'SWAP' ||
-                      entry.holiday_name) && (
+                      entry.holiday_name ||
+                      entry.full_day) && (
                       <span className="mt-0.5 max-w-full truncate px-0.5 text-[8px] leading-none tracking-wide uppercase opacity-70">
                         {entry.source === 'SWAP'
                           ? 'swap'
                           : entry.source === 'OVERRIDE'
                             ? 'set'
-                            : entry.holiday_name}
+                            : entry.holiday_name || 'full day'}
                       </span>
                     )}
                     {/* A holiday the ruling overrode still deserves a mark:
@@ -330,6 +357,12 @@ export function WorkCalendarPage() {
                       <span
                         aria-hidden
                         className="absolute top-1 right-1 size-1.5 rounded-full bg-status-yellow"
+                      />
+                    )}
+                    {entry.full_day && (
+                      <span
+                        aria-label="Counted as a full day"
+                        className="absolute top-1 left-1 size-1.5 rounded-full bg-ink-900"
                       />
                     )}
                   </button>
@@ -348,6 +381,9 @@ export function WorkCalendarPage() {
                 </li>
                 <li className="flex items-center gap-1">
                   <span className="size-2 rounded-full bg-status-amber" /> Undecided fifth Saturday
+                </li>
+                <li className="flex items-center gap-1">
+                  <span className="size-2 rounded-full bg-ink-900" /> Counted as a full day
                 </li>
               </ul>
             </div>
@@ -398,13 +434,15 @@ export function WorkCalendarPage() {
         onHoliday={(name) => declareHoliday.mutate({ date: selected!.date, name })}
         onWithdrawHoliday={(id) => withdrawHoliday.mutate(id)}
         onUndoSwap={() => undoSwap.mutate(selected!.date)}
+        onFullDay={(on, reason) => fullDay.mutate({ date: selected!.date, on, reason })}
         busy={
           rule.isPending ||
           clearRule.isPending ||
           pattern.isPending ||
           declareHoliday.isPending ||
           withdrawHoliday.isPending ||
-          undoSwap.isPending
+          undoSwap.isPending ||
+          fullDay.isPending
         }
       />
 
@@ -423,6 +461,7 @@ function DayModal({
   onHoliday,
   onWithdrawHoliday,
   onUndoSwap,
+  onFullDay,
   busy,
 }: {
   day: WorkCalendarDay | null
@@ -434,10 +473,15 @@ function DayModal({
   onHoliday: (name: string) => void
   onWithdrawHoliday: (id: string) => void
   onUndoSwap: () => void
+  onFullDay: (on: boolean, reason: string) => void
   busy: boolean
 }) {
   const [reason, setReason] = useState('')
   const [holidayName, setHolidayName] = useState('')
+  const [fullDayReason, setFullDayReason] = useState('')
+  // What the box was just set to, shown while the save is in flight so the tick
+  // lands on click; the server's answer takes over once it is back.
+  const [fullDayIntent, setFullDayIntent] = useState<boolean | null>(null)
   if (!day) return null
 
   // A reason is worth keeping in the audit trail but is not worth blocking the
@@ -474,6 +518,58 @@ function DayModal({
           </span>
           <span className="text-[12px] opacity-80">{day.reason}</span>
         </div>
+
+        {/* Independent of whether the day was opened by the pattern, by hand or
+            by a swap: any open day can be a short one. */}
+        {(day.is_working || day.full_day) && (
+          <div className="space-y-3 border-b border-ink-100 pb-4">
+            <p className="text-[11px] font-semibold tracking-wider text-ink-400 uppercase">
+              Short day
+            </p>
+            {/* Before the box, not after it: ticking saves straight away. */}
+            {!day.full_day && (
+              <Field label="Why it is short" hint="Optional. Kept in the audit trail.">
+                <Input
+                  value={fullDayReason}
+                  onChange={(event) => setFullDayReason(event.target.value)}
+                  placeholder="Office open 10 am to 1 pm"
+                />
+              </Field>
+            )}
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-ink-100 px-3 py-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 shrink-0 accent-ink-900"
+                checked={busy && fullDayIntent !== null ? fullDayIntent : Boolean(day.full_day)}
+                disabled={busy}
+                onChange={(event) => {
+                  setFullDayIntent(event.target.checked)
+                  onFullDay(
+                    event.target.checked,
+                    fullDayReason.trim() || 'Short day, counted as a full day.',
+                  )
+                }}
+              />
+              <span>
+                <span className="block text-[13px] font-medium text-ink-800">
+                  Count as a full day for everyone who comes in
+                </span>
+                <span className="block text-[12px] text-ink-500">
+                  For a day the office opens for only a few hours. Anybody who punched in is
+                  present for a full day — no half day, no short hours, no late mark — however long
+                  they stayed. Their punches are still recorded. Leave stays leave, and anybody who
+                  did not come stays absent. Tick it before or after the day; untick to go back to
+                  judging by hours.
+                </span>
+                {day.full_day && day.full_day_reason && (
+                  <span className="mt-1 block text-[12px] text-ink-400">
+                    Reason: {day.full_day_reason}
+                  </span>
+                )}
+              </span>
+            </label>
+          </div>
+        )}
 
         {day.swap_with_date ? (
           <div className="space-y-3">
@@ -587,6 +683,7 @@ function DayModal({
             )}
           </>
         )}
+
       </div>
     </Modal>
   )

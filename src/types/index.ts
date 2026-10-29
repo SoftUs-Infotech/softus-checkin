@@ -503,6 +503,9 @@ export interface WorkCalendarDay {
   swap_with_date?: string | null
   /** Set whenever a declared holiday falls here, even if the day was reopened. */
   holiday_name?: string | null
+  /** Counted as a full day for everybody who punched in, however long they stayed. */
+  full_day?: boolean
+  full_day_reason?: string | null
 }
 
 export interface WorkCalendarMonth {

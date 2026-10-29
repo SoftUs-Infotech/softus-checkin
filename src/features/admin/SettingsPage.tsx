@@ -477,7 +477,7 @@ export function SettingsPage() {
         <Card>
           <CardHeader
             title="Working Saturdays and comp-off"
-            subtitle="The repeating pattern. Overrides for single dates live on the work calendar."
+            subtitle="The repeating pattern. Single dates — closing one, or counting a short Saturday as a full day — are set on the work calendar."
           />
           <div className="space-y-4 px-5 py-4">
             <Field
