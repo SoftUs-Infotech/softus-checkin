@@ -50,6 +50,7 @@ const schema = z
     required_hours: z.coerce.number().min(0.5).max(24),
     half_day_hours: z.coerce.number().min(0.25).max(24),
     grace_minutes: z.coerce.number().int().min(0).max(240),
+    late_window_minutes: z.coerce.number().int().min(0).max(720),
     break_minutes: z.coerce.number().int().min(0).max(480),
     working_weekdays: z.array(z.number()).min(1, 'Pick at least one working day.'),
     description: z.string().max(500).optional(),
@@ -183,7 +184,14 @@ export function ShiftsPage() {
                 <Figure
                   label="Grace"
                   value={`${shift.grace_minutes}m`}
-                  hint={shift.break_minutes ? `${shift.break_minutes}m break` : undefined}
+                  hint={
+                    [
+                      shift.late_window_minutes ? `late within ${shift.late_window_minutes}m` : null,
+                      shift.break_minutes ? `${shift.break_minutes}m break` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || undefined
+                  }
                 />
               </dl>
 
@@ -333,6 +341,7 @@ function ShiftModal({
       required_hours: (shift?.required_minutes ?? 540) / 60,
       half_day_hours: (shift?.half_day_minutes ?? 240) / 60,
       grace_minutes: shift?.grace_minutes ?? 15,
+      late_window_minutes: shift?.late_window_minutes ?? 0,
       break_minutes: shift?.break_minutes ?? 0,
       working_weekdays: shift?.working_weekdays ?? [0, 1, 2, 3, 4],
       description: shift?.description ?? '',
@@ -343,6 +352,7 @@ function ShiftModal({
   const requiredHours = Number(watch('required_hours'))
   const halfDayHours = Number(watch('half_day_hours'))
   const graceMinutes = Number(watch('grace_minutes'))
+  const lateWindow = Number(watch('late_window_minutes'))
   const startTime = watch('start_time')
   const endTime = watch('end_time')
 
@@ -351,7 +361,10 @@ function ShiftModal({
   const summary =
     Number.isFinite(requiredHours) && Number.isFinite(halfDayHours)
       ? `A full day is ${formatHours(requiredHours)}, a half day ${formatHours(halfDayHours)}. ` +
-        `Arriving after ${addGrace(startTime, graceMinutes)} counts as a late arrival.`
+        (lateWindow > 0
+          ? `Arriving between ${addGrace(startTime, graceMinutes)} and ${addGrace(startTime, graceMinutes + lateWindow)} is late; ` +
+            `arriving after ${addGrace(startTime, graceMinutes + lateWindow)} is an afternoon arrival, not late.`
+          : `Arriving after ${addGrace(startTime, graceMinutes)} counts as a late arrival.`)
       : null
 
   async function onSubmit(values: Values) {
@@ -363,6 +376,7 @@ function ShiftModal({
       required_minutes: Math.round(values.required_hours * 60),
       half_day_minutes: Math.round(values.half_day_hours * 60),
       grace_minutes: values.grace_minutes,
+      late_window_minutes: values.late_window_minutes,
       break_minutes: values.break_minutes,
       working_weekdays: values.working_weekdays,
       description: values.description || null,
@@ -483,6 +497,21 @@ function ShiftModal({
                 {...register('grace_minutes')}
               />
             </Field>
+            <Field
+              label="Late only within (minutes)"
+              hint="For interns coming from college: only arrivals this long after the grace period are late; anyone later is an afternoon arrival. 0 = any later arrival is late."
+              error={errors.late_window_minutes?.message}
+            >
+              <Input
+                type="number"
+                min="0"
+                max="720"
+                className="tabular"
+                {...register('late_window_minutes')}
+              />
+            </Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field
               label="Break (minutes)"
               hint="Deducted only when the day is one unbroken session."

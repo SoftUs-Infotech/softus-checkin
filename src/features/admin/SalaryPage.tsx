@@ -21,7 +21,7 @@ import {
   Tr,
   useToast,
 } from '@/components/ui'
-import type { OrgSalaryProjection, Salary, SalaryProjection } from '@/types'
+import type { OrgSalaryProjection, Salary, SalaryHours, SalaryProjection } from '@/types'
 
 /*
   Pay, projected from attendance.
@@ -64,6 +64,17 @@ const COUNT_LABELS: [string, string][] = [
 ]
 
 /** `48333.33` → `48,333` — a projection does not need paise. */
+/** `5400` minutes → `90 h`, `5430` → `90.5 h`. */
+function hoursOf(minutes: number): string {
+  return `${Math.round((minutes / 60) * 100) / 100} h`
+}
+
+/** What one hour of an hourly-paid month is worth. */
+function hourRate(row: SalaryProjection): number {
+  const expected = row.hours?.expected_minutes ?? 0
+  return expected > 0 ? row.monthly_ctc / (expected / 60) : 0
+}
+
 function money(amount: number): string {
   return Math.round(amount).toLocaleString()
 }
@@ -158,10 +169,16 @@ export function SalaryPage() {
                         no salary set
                       </span>
                     )}
+                    {row.pay_basis === 'HOURS' && row.hours && (
+                      <span className="tabular block text-[11px] font-normal text-ink-400">
+                        Intern / part-time · {hoursOf(row.hours.credited_minutes)} of{' '}
+                        {hoursOf(row.hours.expected_minutes)}
+                      </span>
+                    )}
                   </Td>
                   <Td numeric>{money(row.monthly_ctc)}</Td>
                   <Td numeric className="text-ink-500">
-                    {money(row.day_rate)}
+                    {row.pay_basis === 'HOURS' ? `${money(hourRate(row))} / h` : money(row.day_rate)}
                   </Td>
                   <Td
                     numeric
@@ -209,20 +226,28 @@ function BreakdownModal({ row, onClose }: { row: SalaryProjection | null; onClos
       open
       onClose={onClose}
       title={row.user_name || row.user_email || 'Employee'}
-      description={`${row.month} · ${row.day_basis.toLowerCase().replace(/_/g, ' ')}`}
+      description={
+        row.pay_basis === 'HOURS'
+          ? `${row.month} · intern / part-time, paid by hours`
+          : `${row.month} · ${row.day_basis.toLowerCase().replace(/_/g, ' ')}`
+      }
     >
       <div className="space-y-4">
         {/* The working-day count is the number every other figure here is
             divided by, so it is stated on its own rather than buried in a grid
             of eleven equal-looking tiles. */}
-        <div className="flex items-baseline justify-between rounded-lg border border-ink-200 bg-ink-50 px-3 py-2.5">
-          <span className="text-[13px] text-ink-700">
-            {row.counts.working_days} working days this month
-          </span>
-          <span className="tabular text-[13px] font-semibold text-ink-900">
-            {money(row.day_rate)} a day
-          </span>
-        </div>
+        {row.pay_basis === 'HOURS' && row.hours ? (
+          <HoursPanel hours={row.hours} monthly={row.monthly_ctc} />
+        ) : (
+          <div className="flex items-baseline justify-between rounded-lg border border-ink-200 bg-ink-50 px-3 py-2.5">
+            <span className="text-[13px] text-ink-700">
+              {row.counts.working_days} working days this month
+            </span>
+            <span className="tabular text-[13px] font-semibold text-ink-900">
+              {money(row.day_rate)} a day
+            </span>
+          </div>
+        )}
 
         <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {COUNT_LABELS.filter(([key]) => (row.counts[key] ?? 0) > 0).map(([key, label]) => (
@@ -241,6 +266,7 @@ function BreakdownModal({ row, onClose }: { row: SalaryProjection | null; onClos
               key={index}
               label={line.label || line.kind}
               days={line.days}
+              hours={line.hours}
               amount={-line.amount}
             />
           ))}
@@ -293,11 +319,63 @@ function Section({
   )
 }
 
-function Line({ label, days, amount }: { label: string; days: number; amount: number }) {
+/*
+  An intern's month in hours: what the month asked for, what counts towards it,
+  and the share of the fixed amount that earns. Every source of credited hours
+  is listed, so "why is it 75%" is answered on the same screen.
+*/
+function HoursPanel({ hours, monthly }: { hours: SalaryHours; monthly: number }) {
+  const parts: [string, number][] = [
+    ['Punched', hours.worked_minutes],
+    ['Paid leave', hours.paid_leave_minutes],
+    ['Short days counted as full', hours.full_day_minutes],
+    ['Days still to come (assumed worked)', hours.pending_minutes],
+    ['Before go-live (paid in full)', hours.untracked_minutes],
+  ]
+  return (
+    <div className="space-y-2 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[13px] text-ink-700">
+          Paid by hours · {hoursOf(hours.credited_minutes)} of {hoursOf(hours.expected_minutes)}
+        </span>
+        <span className="tabular text-[13px] font-semibold text-ink-900">
+          {Math.round(hours.share * 1000) / 10}% of {money(monthly)}
+        </span>
+      </div>
+      <ul className="space-y-0.5 text-[12px] text-ink-500">
+        {parts
+          .filter(([, minutes]) => minutes > 0)
+          .map(([label, minutes]) => (
+            <li key={label} className="flex justify-between gap-3">
+              <span>{label}</span>
+              <span className="tabular">{hoursOf(minutes)}</span>
+            </li>
+          ))}
+      </ul>
+      <p className="text-[11px] text-ink-400">
+        Hours are pooled over the month and the payout never exceeds the fixed amount.
+      </p>
+    </div>
+  )
+}
+
+function Line({
+  label,
+  days,
+  hours,
+  amount,
+}: {
+  label: string
+  days: number
+  hours?: number | null
+  amount: number
+}) {
   return (
     <li className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
       <span className="min-w-0 flex-1 truncate text-ink-700">{label}</span>
-      <span className="tabular text-[12px] text-ink-400">{days} d</span>
+      <span className="tabular text-[12px] text-ink-400">
+        {hours != null ? `${hours} h` : `${days} d`}
+      </span>
       <span className={cn('tabular', amount < 0 ? 'text-status-red' : 'text-status-green')}>
         {amount < 0 ? '−' : '+'}
         {money(Math.abs(amount))}

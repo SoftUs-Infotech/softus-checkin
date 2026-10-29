@@ -13,6 +13,8 @@ export interface User {
   employee_code?: string | null
   designation?: string | null
   department?: string | null
+  /** PART_TIME (interns, part-timers) is paid in proportion to hours worked. */
+  employment_type?: EmploymentType
   role: UserRole
   status: UserStatus
   shift_id?: string | null
@@ -149,6 +151,8 @@ export interface RegisterMeta {
   filtered: boolean
 }
 
+export type EmploymentType = 'FULL_TIME' | 'PART_TIME'
+
 export interface Shift {
   id: string
   name: string
@@ -158,6 +162,8 @@ export interface Shift {
   required_minutes: number
   half_day_minutes: number
   grace_minutes: number
+  /** How long after grace an arrival is still late; later is an afternoon arrival. 0 = no limit. */
+  late_window_minutes?: number
   break_minutes: number
   working_weekdays: number[]
   working_weekday_names: string[]
@@ -543,6 +549,8 @@ export interface SalaryLine {
   kind: string
   label?: string
   days: number
+  /** Only on the hours-short line of somebody paid by the hour. */
+  hours?: number | null
   amount: number
   reason?: string | null
   source_month?: string | null
@@ -553,18 +561,34 @@ export interface SalaryProjection {
   user_id: string
   user_name?: string | null
   user_email?: string | null
+  employment_type?: EmploymentType
   has_salary_on_record: boolean
   month: string
   monthly_ctc: number
   effective_from?: string | null
   day_basis: string
   day_rate: number
+  /** DAYS docks absences by the day; HOURS pays the amount pro rata to hours worked. */
+  pay_basis?: 'DAYS' | 'HOURS'
+  hours?: SalaryHours | null
   counts: Record<string, number>
   deductions: SalaryLine[]
   adjustments: SalaryLine[]
   total_deduction: number
   total_adjustment: number
   projected_net: number
+}
+
+/** An hourly-paid month, in minutes. `share` is the part of the amount earned. */
+export interface SalaryHours {
+  expected_minutes: number
+  worked_minutes: number
+  paid_leave_minutes: number
+  full_day_minutes: number
+  pending_minutes: number
+  untracked_minutes: number
+  credited_minutes: number
+  share: number
 }
 
 export interface OrgSalaryProjection {

@@ -270,7 +270,10 @@ export function EmployeesPage() {
                     </div>
                     <div>
                       <dt className="text-[11px] tracking-wider text-ink-400 uppercase">Role</dt>
-                      <dd className="text-ink-700">{ROLE_LABEL[employee.role] ?? employee.role}</dd>
+                      <dd className="text-ink-700">
+                        {ROLE_LABEL[employee.role] ?? employee.role}
+                        {employee.employment_type === 'PART_TIME' && ' · Intern / part-time'}
+                      </dd>
                     </div>
                     <div>
                       <dt className="text-[11px] tracking-wider text-ink-400 uppercase">Department</dt>
@@ -322,6 +325,9 @@ export function EmployeesPage() {
                         <span className="text-ink-500">Employee</span>
                       ) : (
                         <Badge tone="brand">{ROLE_LABEL[employee.role] ?? employee.role}</Badge>
+                      )}
+                      {employee.employment_type === 'PART_TIME' && (
+                        <span className="block text-[11px] text-ink-400">Intern / part-time</span>
                       )}
                     </Td>
                     <Td>
@@ -638,6 +644,7 @@ const inviteSchema = z
     first_name: z.string().max(60).optional(),
     last_name: z.string().max(60).optional(),
     role: z.enum(['EMPLOYEE', 'MANAGER', 'ADMIN']),
+    employment_type: z.enum(['FULL_TIME', 'PART_TIME']),
     designation: z.string().max(100).optional(),
     department: z.string().max(100).optional(),
     employee_code: z.string().max(40).optional(),
@@ -682,7 +689,7 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
     formState: { errors, isSubmitting },
   } = useForm<z.infer<typeof inviteSchema>>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { role: 'EMPLOYEE' },
+    defaultValues: { role: 'EMPLOYEE', employment_type: 'FULL_TIME' },
   })
 
   const role = watch('role')
@@ -712,7 +719,7 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
       setDelivered(created.email_delivered)
       if (created.email_delivered) toast.success('Invitation sent.')
       else toast.info('Invitation created — the email did not go out.')
-      reset({ role: 'EMPLOYEE' })
+      reset({ role: 'EMPLOYEE', employment_type: 'FULL_TIME' })
     } catch (submitError) {
       const message = messageOf(submitError, 'The invitation was not sent.')
       setError(message)
@@ -816,6 +823,7 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
         </FormSection>
 
         <FormSection title="Where they sit">
+          <EmploymentTypeField register={register('employment_type')} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Job title" error={errors.designation?.message}>
               <Input placeholder="Accounts executive" {...register('designation')} />
@@ -849,6 +857,21 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   )
 }
 
+/** Full-time or intern/part-time — which decides how the person is paid. */
+function EmploymentTypeField({ register }: { register: UseFormRegisterReturn }) {
+  return (
+    <Field
+      label="Employment type"
+      hint="Interns and part-timers are paid their fixed monthly amount in proportion to the hours they work, shown on the Salary page."
+    >
+      <Select {...register}>
+        <option value="FULL_TIME">Full-time</option>
+        <option value="PART_TIME">Intern / part-time</option>
+      </Select>
+    </Field>
+  )
+}
+
 /* -------------------------------------------------------------------------- */
 /* Edit                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -856,6 +879,7 @@ const editSchema = z
   .object({
     first_name: z.string().max(60).optional(),
     last_name: z.string().max(60).optional(),
+    employment_type: z.enum(['FULL_TIME', 'PART_TIME']),
     designation: z.string().max(100).optional(),
     department: z.string().max(100).optional(),
     employee_code: z.string().max(40).optional(),
@@ -904,6 +928,7 @@ function EditModal({ employee, onClose }: { employee: User | null; onClose: () =
     values: {
       first_name: employee?.first_name ?? '',
       last_name: employee?.last_name ?? '',
+      employment_type: employee?.employment_type ?? 'FULL_TIME',
       designation: employee?.designation ?? '',
       department: employee?.department ?? '',
       employee_code: employee?.employee_code ?? '',
@@ -984,6 +1009,7 @@ function EditModal({ employee, onClose }: { employee: User | null; onClose: () =
         </FormSection>
 
         <FormSection title="Where they sit">
+          <EmploymentTypeField register={register('employment_type')} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Job title" error={errors.designation?.message}>
               <Input {...register('designation')} />
