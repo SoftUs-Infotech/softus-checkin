@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { CheckCheck, Inbox } from 'lucide-react'
@@ -8,17 +8,42 @@ import { cn } from '@/lib/cn'
 import { Skeleton } from '@/components/ui'
 import type { Notification, Paginated } from '@/types'
 
-export function NotificationPanel({ onClose }: { onClose: () => void }) {
+/**
+ * `anchorRef` is the element holding both the bell and this panel. A press
+ * anywhere outside it closes the panel; the bell is inside it, so pressing the
+ * bell toggles rather than closing and instantly reopening.
+ */
+export function NotificationPanel({
+  onClose,
+  anchorRef,
+}: {
+  onClose: () => void
+  anchorRef: RefObject<HTMLElement | null>
+}) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
+  /*
+    Listened for on the document rather than with a full-screen layer behind
+    the panel. The header's backdrop blur makes it the containing block for
+    fixed-position children, so a "fixed inset-0" layer inside it covered the
+    header strip only — a click anywhere on the page below it never reached it,
+    and the panel stayed open.
+  */
   useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      if (anchorRef.current && !anchorRef.current.contains(event.target as Node)) onClose()
+    }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') onClose()
     }
+    document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [anchorRef, onClose])
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications'],
@@ -45,12 +70,6 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Close notifications"
-        className="fixed inset-0 z-30 cursor-default"
-        onClick={onClose}
-      />
       <div className="absolute right-0 z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-ink-100 bg-white shadow-lg">
         <header className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
           <h2 className="text-[14px] text-ink-900">Notifications</h2>

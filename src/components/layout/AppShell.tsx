@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -75,6 +75,9 @@ export function AppShell() {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [bellOpen, setBellOpen] = useState(false)
+  // Holds the bell and its panel: a press outside it closes the panel.
+  const bellRef = useRef<HTMLDivElement>(null)
+  const closeBell = useCallback(() => setBellOpen(false), [])
 
   const { data: summary } = useQuery({
     queryKey: ['dashboard-summary'],
@@ -249,7 +252,7 @@ export function AppShell() {
             )}
           </div>
 
-          <div className="relative ml-auto">
+          <div ref={bellRef} className="relative ml-auto">
             <button
               type="button"
               onClick={() => setBellOpen((open) => !open)}
@@ -263,7 +266,7 @@ export function AppShell() {
                 </span>
               )}
             </button>
-            {bellOpen && <NotificationPanel onClose={() => setBellOpen(false)} />}
+            {bellOpen && <NotificationPanel onClose={closeBell} anchorRef={bellRef} />}
           </div>
         </header>
 
