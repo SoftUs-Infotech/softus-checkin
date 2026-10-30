@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { apiGet, apiPatch, apiPost, messageOf } from '@/lib/api'
 import { formatDate, todayKey } from '@/lib/format'
 import { refreshCalendarDependents } from '@/lib/refresh'
+import { cn } from '@/lib/cn'
+import { currentPosition } from '@/lib/location'
 import {
   Button,
   Card,
@@ -20,7 +22,7 @@ import {
   Textarea,
   useToast,
 } from '@/components/ui'
-import type { NetworkView, OrgSettings } from '@/types'
+import type { LocationCheck, NetworkView, OrgSettings } from '@/types'
 
 /** The form is one long <form>, so the header's Save button has to name it. */
 const FORM_ID = 'org-settings-form'
@@ -60,6 +62,7 @@ const schema = z.object({
   office_latitude: z.string().optional(),
   office_longitude: z.string().optional(),
   office_radius_metres: z.coerce.number().int().min(10).max(20000),
+  enforce_office_location_for_punch: z.boolean(),
 
   late_arrivals_per_half_day: z.coerce.number().int().min(0).max(31),
   retro_approval_months: z.coerce.number().int().min(0).max(24),
@@ -147,6 +150,7 @@ export function SettingsPage() {
           office_latitude: data.office_latitude?.toString() ?? '',
           office_longitude: data.office_longitude?.toString() ?? '',
           office_radius_metres: data.office_radius_metres,
+          enforce_office_location_for_punch: data.enforce_office_location_for_punch ?? false,
 
           late_arrivals_per_half_day: data.late_arrivals_per_half_day,
           retro_approval_months: data.retro_approval_months,
@@ -204,6 +208,8 @@ export function SettingsPage() {
   const lateThreshold = Number(watch('late_arrivals_per_half_day'))
   const geofenceIncomplete =
     !parseCoordinate(watch('office_latitude')) || !parseCoordinate(watch('office_longitude'))
+  const enforceLocation = Boolean(watch('enforce_office_location_for_punch'))
+  const radius = Number(watch('office_radius_metres'))
 
   if (isLoading || !data) {
     return (
@@ -434,6 +440,18 @@ export function SettingsPage() {
               <p className="text-[11px] font-semibold tracking-wider text-ink-400 uppercase">
                 Office location
               </p>
+              <p className="mt-1 text-[12px] text-ink-500">
+                The office's internet address changes whenever the router restarts, so being at the
+                office is best decided by location. Capture it from an office computer: a desktop
+                reports an estimate rather than a GPS fix, and only the same estimate will match
+                later.
+              </p>
+              <OfficeLocationTools
+                onCapture={(latitude, longitude) => {
+                  setValue('office_latitude', latitude.toFixed(6), { shouldDirty: true })
+                  setValue('office_longitude', longitude.toFixed(6), { shouldDirty: true })
+                }}
+              />
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 <Field label="Latitude" error={errors.office_latitude?.message}>
                   <Input
@@ -461,10 +479,19 @@ export function SettingsPage() {
                   />
                 </Field>
               </div>
-              <p className="mt-3 text-[12px] text-ink-400">
-                A punch further out than the radius is flagged for you to look at. It is never
-                refused — a bad GPS fix must not cost somebody their attendance.
-              </p>
+              <div className="mt-3">
+                <Toggle
+                  label="Punching requires being at the office"
+                  hint={`A punch from further than ${Number.isFinite(radius) ? radius : '—'} m from the office point is refused, whatever network it comes from. Off: it is only flagged for you to look at. People on work from home are not affected.`}
+                  {...register('enforce_office_location_for_punch')}
+                />
+              </div>
+              {enforceLocation && geofenceIncomplete && (
+                <p className="mt-2 rounded-lg border border-status-amber/20 bg-status-amber-soft px-3 py-2 text-[12px] text-status-amber">
+                  Set the office location first — with no point to measure from, every punch would be
+                  refused, so saving is blocked until there is one.
+                </p>
+              )}
               {geofenceIncomplete && (
                 <p className="mt-2 text-[12px] text-ink-500">
                   No office location is set yet, so distance is not checked at all.
@@ -718,6 +745,112 @@ const Toggle = function Toggle({
  * is zero on the day and accrues from there. No record is deleted — choosing
  * another date later rebuilds everything from that date instead.
  */
+/*
+  Capture the office point, and check a computer against it.
+
+  Both read the browser exactly as a punch does, and the check asks the server,
+  so what it says is what a punch from this computer would get — which is the
+  whole point of having it on the screen before anybody needs to punch.
+*/
+function OfficeLocationTools({
+  onCapture,
+}: {
+  onCapture: (latitude: number, longitude: number) => void
+}) {
+  const [busy, setBusy] = useState<'capture' | 'check' | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const [check, setCheck] = useState<LocationCheck | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function capture() {
+    setBusy('capture')
+    setError(null)
+    setCheck(null)
+    try {
+      const { coords } = await currentPosition()
+      onCapture(coords.latitude, coords.longitude)
+      setNote(
+        `Captured ${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)} (±${Math.round(coords.accuracy)} m). Save settings to keep it.`,
+      )
+    } catch (captureError) {
+      setError(messageOf(captureError, 'The location could not be read.'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function checkHere() {
+    setBusy('check')
+    setError(null)
+    setNote(null)
+    try {
+      const { coords } = await currentPosition()
+      setCheck(
+        await apiPost<LocationCheck>('/settings/location-check', {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          accuracy_metres: coords.accuracy,
+        }),
+      )
+    } catch (checkError) {
+      setError(messageOf(checkError, 'The location could not be checked.'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          loading={busy === 'capture'}
+          disabled={busy !== null}
+          onClick={capture}
+        >
+          Use this computer's location
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          loading={busy === 'check'}
+          disabled={busy !== null}
+          onClick={checkHere}
+        >
+          Check this computer
+        </Button>
+      </div>
+      {note && <p className="text-[12px] text-ink-600">{note}</p>}
+      {error && <p className="text-[12px] text-status-red">{error}</p>}
+      {check &&
+        (!check.office_set ? (
+          <p className="text-[12px] text-ink-500">No office location is saved yet.</p>
+        ) : (
+          <p
+            className={cn(
+              'rounded-lg px-3 py-2 text-[12px]',
+              check.inside
+                ? 'bg-status-green-soft text-status-green'
+                : 'bg-status-red-soft text-status-red',
+            )}
+          >
+            This computer is {check.distance_metres} m from the saved office point
+            {check.accuracy_metres != null && ` (reading ±${check.accuracy_metres} m)`}; the limit
+            is {check.radius_metres} m.{' '}
+            {check.inside
+              ? 'A punch from here would be accepted.'
+              : check.enforced
+                ? 'A punch from here would be refused.'
+                : 'A punch from here would be flagged as outside the office.'}
+          </p>
+        ))}
+    </div>
+  )
+}
+
 function TrackingStartCard({ startsOn }: { startsOn: string | null }) {
   const queryClient = useQueryClient()
   const toast = useToast()

@@ -448,6 +448,8 @@ export interface OrgSettings {
   office_latitude?: number | null
   office_longitude?: number | null
   office_radius_metres: number
+  /** Refuse a punch made outside the radius, instead of only flagging it. */
+  enforce_office_location_for_punch?: boolean
 
   late_arrivals_per_half_day: number
   retro_approval_months: number
@@ -632,4 +634,14 @@ export interface NetworkView {
   office_ip_ranges: string[]
   enforce_office_network_for_punch: boolean
   enforce_office_network_for_corrections: boolean
+}
+
+/** How far a browser's reading is from the office, by the rule punches use. */
+export interface LocationCheck {
+  office_set: boolean
+  radius_metres: number
+  enforced: boolean
+  accuracy_metres?: number | null
+  distance_metres?: number | null
+  inside: boolean
 }

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { CalendarOff, MapPin, MonitorSmartphone, ShieldAlert, Timer } from 'lucide-react'
 import { apiGet, apiPost, messageOf } from '@/lib/api'
 import { looksLikeAComputer } from '@/lib/device'
+import { currentPosition } from '@/lib/location'
 import { formatMinutes, formatTime } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { Badge, Card, ErrorNote, Skeleton, useToast, type BadgeTone } from '@/components/ui'
@@ -28,28 +29,6 @@ const TONE_FOR_COLOUR: Record<string, BadgeTone> = {
   yellow: 'yellow',
   blue: 'blue',
   grey: 'neutral',
-}
-
-/** Browser geolocation, wrapped so the failure reasons are readable. */
-function currentPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!('geolocation' in navigator)) {
-      reject(new Error('This browser cannot report your location.'))
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      resolve,
-      (error) => {
-        const reasons: Record<number, string> = {
-          1: 'Location access was denied. Allow it for this site in your browser settings, then try again.',
-          2: 'Your location could not be determined. Check that location services are on.',
-          3: 'Finding your location took too long. Try again.',
-        }
-        reject(new Error(reasons[error.code] ?? 'Your location could not be read.'))
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
-    )
-  })
 }
 
 export function PunchCard() {
