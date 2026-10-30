@@ -419,7 +419,11 @@ export function SettingsPage() {
             <div className="space-y-3">
               <Toggle
                 label="Punching requires the office network"
-                hint="A punch from any other network is refused."
+                hint={
+                  enforceLocation
+                    ? 'Not used while "Punching requires being at the office" is on — location decides, and saving switches this off.'
+                    : 'A punch from any other network is refused. Avoid it if the office internet address changes when the router restarts — use the office location below instead.'
+                }
                 {...register('enforce_office_network_for_punch')}
               />
               <Toggle
