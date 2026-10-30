@@ -31,7 +31,7 @@ import {
   useToast,
   type BadgeTone,
 } from '@/components/ui'
-import type { Paginated, Shift, User } from '@/types'
+import type { LeaveBalance, Paginated, Shift, User } from '@/types'
 
 /* An account status is a real state of the person, so it may borrow the status
    palette: invited is unfinished, suspended is a stop. */
@@ -1066,6 +1066,96 @@ function EditModal({ employee, onClose }: { employee: User | null; onClose: () =
           </div>
         </FormSection>
       </form>
+
+      <div className="mt-5">
+        <LeaveBalances userId={employee.id} />
+      </div>
     </Modal>
+  )
+}
+
+/**
+    Each leave balance, settable by hand.
+
+    Outside the form above on purpose: a balance is saved the moment it is set,
+    with its own entry in the audit trail, rather than riding along with a
+    change of job title. The administrator types what is left to take; the API
+    works out the figures behind it, and monthly credits keep adding on top.
+*/
+function LeaveBalances({ userId }: { userId: string }) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+
+  const balances = useQuery({
+    queryKey: ['leave-balances', userId],
+    queryFn: () => apiGet<LeaveBalance[]>(`/leave/balances/${userId}`),
+  })
+
+  const save = useMutation({
+    mutationFn: ({ typeId, available }: { typeId: string; available: number }) =>
+      apiPatch(`/leave/balances/${userId}/${typeId}`, {
+        available,
+        note: `Set to ${available} day(s) by an administrator`,
+      }),
+    onSuccess: (_, { typeId }) => {
+      setDrafts(({ [typeId]: _done, ...rest }) => rest)
+      queryClient.invalidateQueries({ queryKey: ['leave-balances', userId] })
+      toast.success('Leave balance saved.')
+    },
+    onError: (saveError) => toast.error(messageOf(saveError, 'The balance was not saved.')),
+  })
+
+  return (
+    <FormSection
+      title="Leave balances"
+      description="Days left to take this year. Half days are allowed; credits keep adding on the 1st."
+    >
+      {balances.isLoading ? (
+        <p className="text-[13px] text-ink-400">Loading…</p>
+      ) : (
+        <ul className="divide-y divide-ink-50">
+          {(balances.data ?? []).map((balance) => {
+            const draft = drafts[balance.leave_type_id]
+            const value = draft ?? String(balance.available)
+            const parsed = Number(value)
+            const valid = value !== '' && parsed >= 0 && parsed <= 365 && (parsed * 2) % 1 === 0
+            return (
+              <li key={balance.leave_type_id} className="flex items-center gap-3 py-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] text-ink-800">{balance.leave_type_name}</span>
+                  <span className="block text-[12px] text-ink-400">
+                    {balance.used} taken{balance.pending ? ` · ${balance.pending} waiting` : ''}
+                  </span>
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  aria-label={`${balance.leave_type_name} days left`}
+                  className="w-20"
+                  value={value}
+                  onChange={(event) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [balance.leave_type_id]: event.target.value,
+                    }))
+                  }
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={draft === undefined || !valid}
+                  loading={save.isPending && save.variables?.typeId === balance.leave_type_id}
+                  onClick={() => save.mutate({ typeId: balance.leave_type_id, available: parsed })}
+                >
+                  Set
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </FormSection>
   )
 }
