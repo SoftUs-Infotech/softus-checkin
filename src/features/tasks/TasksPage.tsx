@@ -165,7 +165,7 @@ export function TasksPage() {
       )}
 
       <TaskModal open={open} onClose={() => setOpen(false)} />
-      <TimelineModal task={commenting} onClose={() => setCommenting(null)} />
+      {commenting && <TimelineModal task={commenting} onClose={() => setCommenting(null)} />}
     </>
   )
 }

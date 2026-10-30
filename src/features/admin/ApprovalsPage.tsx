@@ -111,7 +111,7 @@ export function ApprovalsPage() {
       {tab === 'leave' && <LeaveQueue onDecide={setDecision} />}
       {tab === 'tasks' && <TaskQueue onDecide={setDecision} />}
 
-      <DecisionModal decision={decision} onClose={() => setDecision(null)} />
+      {decision && <DecisionModal decision={decision} onClose={() => setDecision(null)} />}
     </>
   )
 }

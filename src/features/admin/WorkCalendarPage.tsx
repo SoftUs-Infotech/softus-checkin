@@ -421,6 +421,8 @@ export function WorkCalendarPage() {
       </div>
 
       <DayModal
+        // A fresh dialog per day: another day's typed reason must not carry over.
+        key={selected?.date ?? 'closed'}
         day={selected}
         holiday={selected ? holidayOn(selected.date) : undefined}
         onClose={() => setSelected(null)}
@@ -446,7 +448,7 @@ export function WorkCalendarPage() {
         }
       />
 
-      <SwapModal open={swapping} onClose={() => setSwapping(false)} onDone={refresh} />
+      {swapping && <SwapModal open onClose={() => setSwapping(false)} onDone={refresh} />}
     </>
   )
 }

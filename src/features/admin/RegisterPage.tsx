@@ -551,7 +551,7 @@ export function RegisterPage() {
         </Card>
       )}
 
-      <AdjustModal day={adjusting} onClose={() => setAdjusting(null)} />
+      {adjusting && <AdjustModal day={adjusting} onClose={() => setAdjusting(null)} />}
     </>
   )
 }

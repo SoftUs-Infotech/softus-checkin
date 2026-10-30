@@ -394,7 +394,7 @@ export function EmployeesPage() {
       />
 
       <InviteModal open={inviting} onClose={() => setInviting(false)} />
-      <EditModal employee={editing} onClose={() => setEditing(null)} />
+      {editing && <EditModal employee={editing} onClose={() => setEditing(null)} />}
     </>
   )
 }
@@ -1093,14 +1093,29 @@ function LeaveBalances({ userId }: { userId: string }) {
   })
 
   const save = useMutation({
-    mutationFn: ({ typeId, available }: { typeId: string; available: number }) =>
-      apiPatch(`/leave/balances/${userId}/${typeId}`, {
+    mutationFn: async ({ typeId, available }: { typeId: string; available: number }) => {
+      const balance = balances.data?.find((row) => row.leave_type_id === typeId)
+      const owed = (balance?.used ?? 0) + (balance?.pending ?? 0)
+      const carried = Math.min(balance?.carried_forward ?? 0, available + owed)
+      const saved = await apiPatch<
+        Pick<LeaveBalance, 'allocated' | 'carried_forward' | 'used' | 'pending'>
+      >(`/leave/balances/${userId}/${typeId}`, {
         available,
+        // The same balance in the fields an API older than `available` reads.
+        // Without them that API ignored the request and still answered "saved".
+        allocated: Math.round((available + owed - carried) * 100) / 100,
+        carried_forward: carried,
         note: `Set to ${available} day(s) by an administrator`,
-      }),
+      })
+      // Trust what was stored, not the status code.
+      const left = saved.allocated + saved.carried_forward - saved.used - saved.pending
+      if (Math.abs(left - available) > 0.001) {
+        throw new Error(`Not saved: the balance is still ${Math.round(left * 100) / 100} day(s).`)
+      }
+    },
     onSuccess: (_, { typeId }) => {
       setDrafts(({ [typeId]: _done, ...rest }) => rest)
-      queryClient.invalidateQueries({ queryKey: ['leave-balances', userId] })
+      queryClient.invalidateQueries({ queryKey: ['leave-balances'] }) // theirs, and yours if it is you
       toast.success('Leave balance saved.')
     },
     onError: (saveError) => toast.error(messageOf(saveError, 'The balance was not saved.')),

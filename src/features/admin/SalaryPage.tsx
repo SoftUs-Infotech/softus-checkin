@@ -213,7 +213,10 @@ export function SalaryPage() {
       </Card>
 
       <BreakdownModal row={detail} onClose={() => setDetail(null)} />
-      <SetSalaryModal row={editing} month={month} onClose={() => setEditing(null)} />
+      {/* Mounted per opening, so one employee's typed figures never carry over to the next. */}
+      {editing && (
+        <SetSalaryModal row={editing} month={month} onClose={() => setEditing(null)} />
+      )}
     </>
   )
 }
