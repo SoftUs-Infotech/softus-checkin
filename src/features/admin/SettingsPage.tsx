@@ -6,8 +6,6 @@ import { z } from 'zod'
 import { apiGet, apiPatch, apiPost, messageOf } from '@/lib/api'
 import { formatDate, todayKey } from '@/lib/format'
 import { refreshCalendarDependents } from '@/lib/refresh'
-import { cn } from '@/lib/cn'
-import { currentPosition } from '@/lib/location'
 import {
   Button,
   Card,
@@ -19,10 +17,9 @@ import {
   Modal,
   PageHeader,
   Select,
-  Textarea,
   useToast,
 } from '@/components/ui'
-import type { LocationCheck, NetworkView, OrgSettings } from '@/types'
+import type { OrgSettings } from '@/types'
 
 /** The form is one long <form>, so the header's Save button has to name it. */
 const FORM_ID = 'org-settings-form'
@@ -54,16 +51,6 @@ const schema = z.object({
   tasks_required_daily: z.boolean(),
   support_email: z.string().max(120).optional(),
 
-  enforce_office_network_for_punch: z.boolean(),
-  enforce_office_network_for_corrections: z.boolean(),
-  // One address or CIDR range per line — a textarea is how people actually
-  // paste a list of addresses.
-  office_ip_ranges: z.string().optional(),
-  office_latitude: z.string().optional(),
-  office_longitude: z.string().optional(),
-  office_radius_metres: z.coerce.number().int().min(10).max(20000),
-  enforce_office_location_for_punch: z.boolean(),
-
   late_arrivals_per_half_day: z.coerce.number().int().min(0).max(31),
   retro_approval_months: z.coerce.number().int().min(0).max(24),
 
@@ -83,20 +70,6 @@ function parseSaturdays(value: string | undefined): number[] {
   return [...new Set((value ?? '').split(/[^0-9]+/).map(Number))]
     .filter((n) => n >= 1 && n <= 5)
     .sort()
-}
-
-function parseLines(value: string | undefined): string[] {
-  return (value ?? '')
-    .split(/[\n,]+/)
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-}
-
-function parseCoordinate(value: string | undefined): number | null {
-  const trimmed = (value ?? '').trim()
-  if (!trimmed) return null
-  const parsed = Number(trimmed)
-  return Number.isFinite(parsed) ? parsed : null
 }
 
 /** `[2, 4]` → `the second and fourth Saturday`. The setting is a list of
@@ -127,7 +100,6 @@ export function SettingsPage() {
     register,
     handleSubmit,
     watch,
-    setValue,
     formState: { errors, isSubmitting },
   } = useForm<z.input<typeof schema>, unknown, z.output<typeof schema>>({
     resolver: zodResolver(schema),
@@ -144,13 +116,6 @@ export function SettingsPage() {
           tasks_required_daily: data.tasks_required_daily,
           support_email: data.support_email ?? '',
 
-          enforce_office_network_for_punch: data.enforce_office_network_for_punch,
-          enforce_office_network_for_corrections: data.enforce_office_network_for_corrections,
-          office_ip_ranges: (data.office_ip_ranges ?? []).join('\n'),
-          office_latitude: data.office_latitude?.toString() ?? '',
-          office_longitude: data.office_longitude?.toString() ?? '',
-          office_radius_metres: data.office_radius_metres,
-          enforce_office_location_for_punch: data.enforce_office_location_for_punch ?? false,
 
           late_arrivals_per_half_day: data.late_arrivals_per_half_day,
           retro_approval_months: data.retro_approval_months,
@@ -178,9 +143,6 @@ export function SettingsPage() {
       apiPatch<OrgSettings>('/settings', {
         ...values,
         support_email: values.support_email || null,
-        office_ip_ranges: parseLines(values.office_ip_ranges),
-        office_latitude: parseCoordinate(values.office_latitude),
-        office_longitude: parseCoordinate(values.office_longitude),
         working_saturdays: parseSaturdays(values.working_saturdays),
         fifth_saturday_working:
           fifth_saturday === 'UNDECIDED' ? null : fifth_saturday === 'WORKING',
@@ -199,17 +161,10 @@ export function SettingsPage() {
     },
   })
 
-  const ipRanges = parseLines(watch('office_ip_ranges'))
-  const enforcePunch = Boolean(watch('enforce_office_network_for_punch'))
-  const enforceCorrections = Boolean(watch('enforce_office_network_for_corrections'))
   const correctionWindow = Number(watch('correction_window_days'))
   const autoCloseHour = Number(watch('auto_close_hour'))
   const leaveYearMonth = Number(watch('leave_year_start_month'))
   const lateThreshold = Number(watch('late_arrivals_per_half_day'))
-  const geofenceIncomplete =
-    !parseCoordinate(watch('office_latitude')) || !parseCoordinate(watch('office_longitude'))
-  const enforceLocation = Boolean(watch('enforce_office_location_for_punch'))
-  const radius = Number(watch('office_radius_metres'))
 
   if (isLoading || !data) {
     return (
@@ -395,118 +350,6 @@ export function SettingsPage() {
 
         <Card>
           <CardHeader
-            title="Where punching is allowed"
-            subtitle="Employees can still see everything from anywhere — this governs punching only."
-          />
-          <div className="space-y-4 px-5 py-4">
-            <ThisConnection
-              ranges={ipRanges}
-              onAdd={(range) =>
-                setValue('office_ip_ranges', [...ipRanges, range].join('\n'), {
-                  shouldDirty: true,
-                })
-              }
-            />
-
-            <Field
-              label="Office IP addresses"
-              hint="One address or CIDR range per line, e.g. 203.0.113.7 or 203.0.113.0/24. An empty list can never match, so enforcement stays off until you add one."
-              error={errors.office_ip_ranges?.message}
-            >
-              <Textarea rows={4} className="tabular" {...register('office_ip_ranges')} />
-            </Field>
-
-            <div className="space-y-3">
-              <Toggle
-                label="Punching requires the office network"
-                hint={
-                  enforceLocation
-                    ? 'Not used while "Punching requires being at the office" is on — location decides, and saving switches this off.'
-                    : 'A punch from any other network is refused. Avoid it if the office internet address changes when the router restarts — use the office location below instead.'
-                }
-                {...register('enforce_office_network_for_punch')}
-              />
-              <Toggle
-                label="Filing a correction requires the office network"
-                hint="Stops a day being rewritten from outside the office."
-                {...register('enforce_office_network_for_corrections')}
-              />
-            </div>
-
-            {(enforcePunch || enforceCorrections) && ipRanges.length === 0 && (
-              <p className="rounded-lg border border-status-amber/20 bg-status-amber-soft px-3 py-2 text-[12px] text-status-amber">
-                Enforcement is on but no address is listed, so nothing can match. Add at least one
-                range above or nobody will be able to punch.
-              </p>
-            )}
-
-            <div className="border-t border-ink-100 pt-4">
-              <p className="text-[11px] font-semibold tracking-wider text-ink-400 uppercase">
-                Office location
-              </p>
-              <p className="mt-1 text-[12px] text-ink-500">
-                The office's internet address changes whenever the router restarts, so being at the
-                office is best decided by location. Capture it from an office computer: a desktop
-                reports an estimate rather than a GPS fix, and only the same estimate will match
-                later.
-              </p>
-              <OfficeLocationTools
-                onCapture={(latitude, longitude) => {
-                  setValue('office_latitude', latitude.toFixed(6), { shouldDirty: true })
-                  setValue('office_longitude', longitude.toFixed(6), { shouldDirty: true })
-                }}
-              />
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <Field label="Latitude" error={errors.office_latitude?.message}>
-                  <Input
-                    className="tabular"
-                    inputMode="decimal"
-                    placeholder="23.0225"
-                    {...register('office_latitude')}
-                  />
-                </Field>
-                <Field label="Longitude" error={errors.office_longitude?.message}>
-                  <Input
-                    className="tabular"
-                    inputMode="decimal"
-                    placeholder="72.5714"
-                    {...register('office_longitude')}
-                  />
-                </Field>
-                <Field label="Radius (metres)" error={errors.office_radius_metres?.message}>
-                  <Input
-                    type="number"
-                    min="10"
-                    max="20000"
-                    className="tabular"
-                    {...register('office_radius_metres')}
-                  />
-                </Field>
-              </div>
-              <div className="mt-3">
-                <Toggle
-                  label="Punching requires being at the office"
-                  hint={`A punch from further than ${Number.isFinite(radius) ? radius : '—'} m from the office point is refused, whatever network it comes from. Off: it is only flagged for you to look at. People on work from home are not affected.`}
-                  {...register('enforce_office_location_for_punch')}
-                />
-              </div>
-              {enforceLocation && geofenceIncomplete && (
-                <p className="mt-2 rounded-lg border border-status-amber/20 bg-status-amber-soft px-3 py-2 text-[12px] text-status-amber">
-                  Set the office location first — with no point to measure from, every punch would be
-                  refused, so saving is blocked until there is one.
-                </p>
-              )}
-              {geofenceIncomplete && (
-                <p className="mt-2 text-[12px] text-ink-500">
-                  No office location is set yet, so distance is not checked at all.
-                </p>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader
             title="Working Saturdays and comp-off"
             subtitle="The repeating pattern. Single dates — closing one, or counting a short Saturday as a full day — are set on the work calendar."
           />
@@ -642,87 +485,6 @@ export function SettingsPage() {
   )
 }
 
-/**
- * The address this API judges the caller by, and a one-press way to allow it.
- *
- * Nobody can fill in an office allowlist they have no way of reading. Sending an
- * administrator to a "what is my IP" site does not solve it either: with a proxy
- * or a tunnel in front of the API, the address that site reports and the address
- * the allowlist compares are different, and pasting the wrong one locks the
- * whole office out of punching. So the server reports its own view.
- *
- * What it suggests is deliberately not always the bare address. An IPv6 office
- * rotates the back half of its address constantly — the /64 prefix is the part
- * the provider actually delegates, and pinning the full address would stop
- * punching by tomorrow morning.
- */
-function ThisConnection({ ranges, onAdd }: { ranges: string[]; onAdd: (range: string) => void }) {
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ['settings-network'],
-    queryFn: () => apiGet<NetworkView>('/settings/network'),
-    // The address is a fact about right now, not about the organisation.
-    staleTime: 0,
-    gcTime: 0,
-  })
-
-  if (isLoading) {
-    return <div className="h-[86px] animate-pulse rounded-lg border border-rule bg-ink-50" />
-  }
-  if (isError || !data) {
-    return (
-      <p className="rounded-lg border border-rule px-3.5 py-3 text-[12px] text-ink-500">
-        This connection could not be checked. Enter the office address by hand below.
-      </p>
-    )
-  }
-
-  const suggestion = data.suggested_range
-  const alreadyListed = Boolean(suggestion && ranges.includes(suggestion))
-
-  return (
-    <div className="rounded-lg border border-rule bg-ink-50/60 px-3.5 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold tracking-wider text-ink-400 uppercase">
-            This connection
-          </p>
-          <p className="tabular mt-1 break-all text-[13px] text-ink-900">
-            {data.your_ip ?? 'No address — the API could not see one'}
-          </p>
-          <p className="mt-1 text-[12px] text-ink-500">
-            {data.matches_allowlist
-              ? 'Already covered by the list below. Punching from here is allowed.'
-              : suggestion
-                ? `Not on the list. Add ${suggestion} to allow this network.`
-                : 'Nothing to suggest from this address.'}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => refetch()} loading={isFetching}>
-            Re-check
-          </Button>
-          {suggestion && !data.matches_allowlist && (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={alreadyListed}
-              onClick={() => onAdd(suggestion)}
-            >
-              {alreadyListed ? 'Added — save to apply' : 'Add this network'}
-            </Button>
-          )}
-        </div>
-      </div>
-      {suggestion && suggestion !== data.your_ip && !data.matches_allowlist && (
-        <p className="mt-2 border-t border-rule pt-2 text-[12px] text-ink-400">
-          The suggestion is the /64 prefix rather than the full address: the back half of an IPv6
-          address changes on its own, so allowing only today's would stop punching tomorrow.
-        </p>
-      )}
-    </div>
-  )
-}
-
 const Toggle = function Toggle({
   label,
   hint,
@@ -749,112 +511,6 @@ const Toggle = function Toggle({
  * is zero on the day and accrues from there. No record is deleted — choosing
  * another date later rebuilds everything from that date instead.
  */
-/*
-  Capture the office point, and check a computer against it.
-
-  Both read the browser exactly as a punch does, and the check asks the server,
-  so what it says is what a punch from this computer would get — which is the
-  whole point of having it on the screen before anybody needs to punch.
-*/
-function OfficeLocationTools({
-  onCapture,
-}: {
-  onCapture: (latitude: number, longitude: number) => void
-}) {
-  const [busy, setBusy] = useState<'capture' | 'check' | null>(null)
-  const [note, setNote] = useState<string | null>(null)
-  const [check, setCheck] = useState<LocationCheck | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function capture() {
-    setBusy('capture')
-    setError(null)
-    setCheck(null)
-    try {
-      const { coords } = await currentPosition()
-      onCapture(coords.latitude, coords.longitude)
-      setNote(
-        `Captured ${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)} (±${Math.round(coords.accuracy)} m). Save settings to keep it.`,
-      )
-    } catch (captureError) {
-      setError(messageOf(captureError, 'The location could not be read.'))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function checkHere() {
-    setBusy('check')
-    setError(null)
-    setNote(null)
-    try {
-      const { coords } = await currentPosition()
-      setCheck(
-        await apiPost<LocationCheck>('/settings/location-check', {
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          accuracy_metres: coords.accuracy,
-        }),
-      )
-    } catch (checkError) {
-      setError(messageOf(checkError, 'The location could not be checked.'))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          loading={busy === 'capture'}
-          disabled={busy !== null}
-          onClick={capture}
-        >
-          Use this computer's location
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          loading={busy === 'check'}
-          disabled={busy !== null}
-          onClick={checkHere}
-        >
-          Check this computer
-        </Button>
-      </div>
-      {note && <p className="text-[12px] text-ink-600">{note}</p>}
-      {error && <p className="text-[12px] text-status-red">{error}</p>}
-      {check &&
-        (!check.office_set ? (
-          <p className="text-[12px] text-ink-500">No office location is saved yet.</p>
-        ) : (
-          <p
-            className={cn(
-              'rounded-lg px-3 py-2 text-[12px]',
-              check.inside
-                ? 'bg-status-green-soft text-status-green'
-                : 'bg-status-red-soft text-status-red',
-            )}
-          >
-            This computer is {check.distance_metres} m from the saved office point
-            {check.accuracy_metres != null && ` (reading ±${check.accuracy_metres} m)`}; the limit
-            is {check.radius_metres} m.{' '}
-            {check.inside
-              ? 'A punch from here would be accepted.'
-              : check.enforced
-                ? 'A punch from here would be refused.'
-                : 'A punch from here would be flagged as outside the office.'}
-          </p>
-        ))}
-    </div>
-  )
-}
-
 function TrackingStartCard({ startsOn }: { startsOn: string | null }) {
   const queryClient = useQueryClient()
   const toast = useToast()

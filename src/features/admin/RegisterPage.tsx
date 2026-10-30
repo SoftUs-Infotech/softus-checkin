@@ -7,7 +7,6 @@ import {
   ArrowUp,
   ChevronsUpDown,
   MapPin,
-  MapPinOff,
   Monitor,
   Search,
   Smartphone,
@@ -1074,15 +1073,6 @@ function PunchedFrom({ day }: { day: AttendanceDay }) {
         )}
         {punch.platform || (punch.device_class ? humanise(punch.device_class) : 'Unknown')}
       </span>
-      {punch.outside_office && (
-        <span
-          className="inline-flex items-center gap-1 rounded-full bg-status-red-soft px-2 py-0.5 whitespace-nowrap text-status-red"
-          title={punch.distance_metres ? `${punch.distance_metres} m from the office` : undefined}
-        >
-          <MapPinOff className="size-3" aria-hidden />
-          Away
-        </span>
-      )}
       {/* Where, in the only terms a person reads at a glance. The address and
           the IP are still recorded — they hang off this as the tooltip, for the
           one time in a year somebody has to prove where a punch came from. */}

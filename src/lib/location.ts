@@ -1,10 +1,8 @@
 /**
  * Browser geolocation, wrapped so the failure reasons are readable.
  *
- * One definition for the punch and for the settings screen: the office point
- * an administrator captures has to be read the same way a punch is, or the two
- * can disagree by more than the radius. A desktop has no GPS, so its browser
- * reports an estimate — often the same point every time, ±100–300 m.
+ * Where a punch happened is recorded with it (never judged — any computer may
+ * punch). A desktop has no GPS, so its browser reports an estimate.
  */
 export function currentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
@@ -22,8 +20,7 @@ export function currentPosition(): Promise<GeolocationPosition> {
         }
         reject(new Error(reasons[error.code] ?? 'Your location could not be read.'))
       },
-      // Always a fresh reading: with the office geofence a refused punch is
-      // retried, and a cached position would refuse the retry the same way.
+      // Always a fresh reading, so the recorded place is where the punch was.
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     )
   })

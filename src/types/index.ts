@@ -29,9 +29,6 @@ export interface User {
   profile_completed: boolean
   /** An administrator oversees attendance rather than recording it. */
   can_punch: boolean
-  wfh_enabled: boolean
-  wfh_from?: string | null
-  wfh_to?: string | null
   last_login_at?: string | null
   created_at?: string | null
 }
@@ -90,8 +87,6 @@ export interface PunchEvent {
   user_agent?: string | null
   ip?: string | null
   /** Flagged, never blocked: a bad GPS fix must not cost an attendance day. */
-  outside_office?: boolean | null
-  distance_metres?: number | null
   source: string
   note?: string | null
 }
@@ -442,14 +437,6 @@ export interface OrgSettings {
   tasks_required_daily: boolean
   leave_year_start_month: number
 
-  enforce_office_network_for_punch: boolean
-  enforce_office_network_for_corrections: boolean
-  office_ip_ranges: string[]
-  office_latitude?: number | null
-  office_longitude?: number | null
-  office_radius_metres: number
-  /** Refuse a punch made outside the radius, instead of only flagging it. */
-  enforce_office_location_for_punch?: boolean
 
   late_arrivals_per_half_day: number
   retro_approval_months: number
@@ -619,29 +606,4 @@ export interface BulkResponse {
   succeeded: number
   failed: number
   results: BulkResult[]
-}
-
-/**
- * The office-network policy as seen from one request. `your_ip` is the address
- * the API itself judges the caller by — not what a "what is my IP" site says,
- * which differs the moment a proxy sits in front.
- */
-export interface NetworkView {
-  your_ip: string | null
-  /** What to put in the allowlist to cover this network — a /64 for IPv6. */
-  suggested_range: string | null
-  matches_allowlist: boolean
-  office_ip_ranges: string[]
-  enforce_office_network_for_punch: boolean
-  enforce_office_network_for_corrections: boolean
-}
-
-/** How far a browser's reading is from the office, by the rule punches use. */
-export interface LocationCheck {
-  office_set: boolean
-  radius_metres: number
-  enforced: boolean
-  accuracy_metres?: number | null
-  distance_metres?: number | null
-  inside: boolean
 }

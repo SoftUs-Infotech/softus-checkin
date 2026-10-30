@@ -889,9 +889,6 @@ const editSchema = z
     reporting_manager_id: z.string().optional(),
     joining_date: z.string().optional(),
     can_punch: z.boolean(),
-    wfh_enabled: z.boolean(),
-    wfh_from: z.string().optional(),
-    wfh_to: z.string().optional(),
   })
   .refine((values) => !values.shift_from || !values.shift_to || values.shift_from <= values.shift_to, {
     path: ['shift_to'],
@@ -938,13 +935,9 @@ function EditModal({ employee, onClose }: { employee: User | null; onClose: () =
       reporting_manager_id: employee?.reporting_manager_id ?? '',
       joining_date: employee?.joining_date ?? '',
       can_punch: employee?.can_punch ?? true,
-      wfh_enabled: employee?.wfh_enabled ?? false,
-      wfh_from: employee?.wfh_from ?? '',
-      wfh_to: employee?.wfh_to ?? '',
     },
   })
 
-  const wfhEnabled = watch('wfh_enabled')
   const shiftId = watch('shift_id')
   const shiftFrom = watch('shift_from')
   const shiftTo = watch('shift_to')
@@ -1070,38 +1063,6 @@ function EditModal({ employee, onClose }: { employee: User | null; onClose: () =
                 </span>
               </span>
             </label>
-
-            <label className="flex cursor-pointer items-start gap-2.5">
-              <input
-                type="checkbox"
-                className="mt-0.5 size-4 shrink-0 accent-ink-900"
-                {...register('wfh_enabled')}
-              />
-              <span>
-                <span className="block text-[13px] text-ink-800">Works from home</span>
-                <span className="block text-[12px] text-ink-400">
-                  Lifts the office-network requirement for this person only.
-                </span>
-              </span>
-            </label>
-
-            <div
-              className={
-                wfhEnabled ? 'space-y-2' : 'space-y-2 opacity-50 transition-opacity'
-              }
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Working from home from" error={errors.wfh_from?.message}>
-                  <Input type="date" className="tabular" {...register('wfh_from')} />
-                </Field>
-                <Field label="Until" error={errors.wfh_to?.message}>
-                  <Input type="date" className="tabular" {...register('wfh_to')} />
-                </Field>
-              </div>
-              <p className="text-[12px] text-ink-400">
-                Leave both dates empty for an arrangement with no end date.
-              </p>
-            </div>
           </div>
         </FormSection>
       </form>

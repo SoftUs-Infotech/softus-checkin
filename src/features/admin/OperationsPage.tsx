@@ -4,7 +4,6 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   CalendarOff,
   CheckCircle2,
-  MapPinOff,
   Palmtree,
   Smartphone,
   TimerOff,
@@ -41,7 +40,7 @@ import type { AttendanceDay, DashboardSummary } from '@/types'
   trip to the register.
 */
 
-type ExceptionKind = 'missing_out' | 'absent' | 'late' | 'geo' | 'device' | 'no_shift'
+type ExceptionKind = 'missing_out' | 'absent' | 'late' | 'device' | 'no_shift'
 
 /** A shift is a planned window; the flag says the window lapsed while the work
     did not. It belongs on this list, but it is a planning signal rather than a
@@ -68,7 +67,6 @@ const KINDS: {
   { kind: 'missing_out', label: 'Never punched out', short: 'No punch out', icon: TimerOff, tone: 'red' },
   { kind: 'absent', label: 'Absent, no leave', short: 'Absent', icon: UserX, tone: 'red' },
   { kind: 'late', label: 'Late arrival', short: 'Late', icon: TimerOff, tone: 'amber' },
-  { kind: 'geo', label: 'Punched away from the office', short: 'Away from office', icon: MapPinOff, tone: 'amber' },
   { kind: 'device', label: 'Punched from a phone', short: 'From a phone', icon: Smartphone, tone: 'amber' },
   { kind: 'no_shift', label: 'Shift window has lapsed', short: 'Shift window lapsed', icon: CalendarOff, tone: 'neutral' },
 ]
@@ -112,15 +110,6 @@ function exceptionsOf(rows: OpsRow[]): Exception[] {
         kind: 'late',
         row,
         label: 'Late arrival',
-        tone: 'amber',
-      })
-    }
-    if (row.sessions?.some((session) => session.punch_in?.outside_office)) {
-      found.push({
-        key: `${row.date}-geo-${row.user_id}`,
-        kind: 'geo',
-        row,
-        label: 'Punched away from the office',
         tone: 'amber',
       })
     }
