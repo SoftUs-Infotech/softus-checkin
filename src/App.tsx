@@ -17,7 +17,7 @@ import { ProfilePage } from '@/features/profile/ProfilePage'
 import { ApprovalsPage } from '@/features/admin/ApprovalsPage'
 import { EmployeesPage } from '@/features/admin/EmployeesPage'
 import { ShiftsPage } from '@/features/admin/ShiftsPage'
-import { LeaveTypesPage } from '@/features/admin/LeaveTypesPage'
+import { LeavesPage } from '@/features/admin/LeavesPage'
 import { HolidaysPage } from '@/features/admin/HolidaysPage'
 import { AnnouncementsPage } from '@/features/admin/AnnouncementsPage'
 import { RegisterPage } from '@/features/admin/RegisterPage'
@@ -244,12 +244,16 @@ export default function App() {
           }
         />
         <Route
-          path="admin/leave-types"
+          path="admin/leaves"
           element={
             <RequireAdmin>
-              <LeaveTypesPage />
+              <LeavesPage />
             </RequireAdmin>
           }
+        />
+        <Route
+          path="admin/leave-types"
+          element={<Navigate to="/admin/leaves?tab=types" replace />}
         />
         <Route
           path="admin/holidays"

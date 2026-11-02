@@ -76,7 +76,8 @@ function round(value: number): string {
   return String(Math.round(value * 100) / 100)
 }
 
-export function LeaveTypesPage() {
+/** `embedded`: shown as a tab of Leaves, under that page's own heading. */
+export function LeaveTypesPage({ embedded = false }: { embedded?: boolean }) {
   const [editing, setEditing] = useState<LeaveType | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<LeaveType | null>(null)
@@ -108,16 +109,25 @@ export function LeaveTypesPage() {
 
   return (
     <>
-      <PageHeader
-        title="Leave types"
-        description="Add a new kind of leave, or change the rules of an existing one."
-        action={
+      {embedded ? (
+        <div className="mb-4 flex justify-end">
           <Button onClick={() => setCreating(true)}>
             <Plus className="size-4" />
             Add a leave type
           </Button>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          title="Leave types"
+          description="Add a new kind of leave, or change the rules of an existing one."
+          action={
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="size-4" />
+              Add a leave type
+            </Button>
+          }
+        />
+      )}
 
       {notice && (
         <p className="mb-4 rounded-lg border border-ink-100 bg-ink-50 px-3 py-2 text-[13px] text-ink-700">{notice}</p>

@@ -457,7 +457,7 @@ export function SettingsPage() {
               />
               <Toggle
                 label="Unpaid leave deducts"
-                hint="Leave types marked unpaid on the leave-types page."
+                hint="Leave types marked unpaid under Leaves → Leave types."
                 {...register('salary_deduct_unpaid_leave')}
               />
               <Toggle

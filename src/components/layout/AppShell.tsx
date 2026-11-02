@@ -60,7 +60,7 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/tasks', label: 'Tasks', icon: ClipboardList },
   { to: '/admin/employees', label: 'Employees', icon: Users },
   { to: '/admin/shifts', label: 'Shifts', icon: CalendarRange },
-  { to: '/admin/leave-types', label: 'Leave types', icon: Palmtree },
+  { to: '/admin/leaves', label: 'Leaves', icon: Palmtree },
   { to: '/admin/holidays', label: 'Holidays', icon: CalendarDays },
   { to: '/admin/work-calendar', label: 'Work calendar', icon: CalendarRange },
   { to: '/admin/salary', label: 'Salary', icon: Wallet },
