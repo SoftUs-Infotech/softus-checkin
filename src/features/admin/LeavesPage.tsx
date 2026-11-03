@@ -17,7 +17,7 @@ import {
   Th,
   Tr,
 } from '@/components/ui'
-import type { LeaveRequest } from '@/types'
+import type { LeaveRequest, WorkCalendarMonth } from '@/types'
 import { LeaveTypesPage } from './LeaveTypesPage'
 
 type Tab = 'calendar' | 'upcoming' | 'summary' | 'types'
@@ -112,6 +112,19 @@ function WhoIsAway() {
   const first = `${month}-01`
   const last = addDays(addDays(first, 31).slice(0, 7) + '-01', -1)
   const { data, isLoading } = useLeaveBetween(first, last)
+  // The same day kinds as the work calendar, so the two always agree.
+  const calendar = useQuery({
+    queryKey: ['work-calendar', Number(month.slice(0, 4)), Number(month.slice(5, 7))],
+    queryFn: () =>
+      apiGet<WorkCalendarMonth>('/work-calendar/month', {
+        year: Number(month.slice(0, 4)),
+        month: Number(month.slice(5, 7)),
+      }),
+  })
+  const dayOf = useMemo(
+    () => new Map((calendar.data?.days ?? []).map((day) => [day.date, day])),
+    [calendar.data],
+  )
 
   const byDay = useMemo(() => {
     const map = new Map<string, { request: LeaveRequest; part: string }[]>()
@@ -128,6 +141,7 @@ function WhoIsAway() {
   const leading = (new Date(`${first}T00:00:00`).getDay() + 6) % 7 // Monday first
   const length = Number(last.slice(8, 10))
   const away = byDay.get(selected) ?? []
+  const selectedDay = dayOf.get(selected)
 
   function shift(by: number) {
     const [year, mon] = month.split('-').map(Number)
@@ -163,6 +177,10 @@ function WhoIsAway() {
           {Array.from({ length }).map((_, index) => {
             const key = `${month}-${String(index + 1).padStart(2, '0')}`
             const people = byDay.get(key) ?? []
+            const day = dayOf.get(key)
+            const holiday = day?.holiday_name && !day.is_working
+            const off = day && !day.is_working
+            const workedSaturday = day?.is_working && day.weekday.startsWith('Sat')
             return (
               <button
                 key={key}
@@ -170,12 +188,17 @@ function WhoIsAway() {
                 onClick={() => setSelected(key)}
                 className={cn(
                   'flex min-h-16 flex-col items-start rounded-lg border p-1.5 text-left transition-colors',
-                  key === selected ? 'border-ink-900' : 'border-ink-100 hover:bg-ink-50',
+                  holiday ? 'bg-status-yellow-soft' : off ? 'bg-ink-100' : 'bg-white',
+                  key === selected ? 'border-ink-900' : 'border-ink-100 hover:border-ink-300',
                 )}
               >
                 <span className={cn('tabular text-[12px]', key === todayKey() ? 'font-semibold text-ink-900' : 'text-ink-500')}>
                   {index + 1}
                 </span>
+                {holiday && (
+                  <span className="w-full truncate text-[10px] text-status-yellow uppercase">{day.holiday_name}</span>
+                )}
+                {workedSaturday && <span className="text-[10px] text-ink-400">Working Saturday</span>}
                 {people.slice(0, 2).map(({ request }) => (
                   <span
                     key={request.id}
@@ -193,7 +216,8 @@ function WhoIsAway() {
           })}
         </div>
         <p className="mt-3 text-[12px] text-ink-400">
-          Green is approved, grey is waiting for a decision. Weekly offs and holidays never count as leave.
+          Names: green is approved, grey is waiting. Days: white is working, grey is off, yellow is a
+          holiday — the same as the work calendar. Leave only ever covers working days.
         </p>
       </Card>
 
@@ -201,6 +225,11 @@ function WhoIsAway() {
         <p className="text-[11px] font-semibold tracking-wider text-ink-400 uppercase">
           Away on {formatDate(selected)}
         </p>
+        {selectedDay && !selectedDay.is_working && (
+          <p className="mt-1 text-[12px] text-ink-500">
+            {selectedDay.holiday_name ? `Holiday — ${selectedDay.holiday_name}` : 'Office closed'}
+          </p>
+        )}
         {away.length === 0 ? (
           <p className="mt-3 text-[13px] text-ink-400">Nobody is on leave.</p>
         ) : (
