@@ -6,6 +6,7 @@ import {
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
@@ -623,7 +624,8 @@ export function Tr({
 }: {
   children: ReactNode
   className?: string
-  onClick?: () => void
+  /** Receives the event, so a row can ignore clicks meant for its own buttons. */
+  onClick?: (event: ReactMouseEvent<HTMLTableRowElement>) => void
 }) {
   return (
     <tr

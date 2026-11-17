@@ -28,6 +28,7 @@ const ENTITIES = [
   'ATTENDANCE',
   'CORRECTION',
   'TASK',
+  'SCREENSHOT',
   'SETTINGS',
 ]
 

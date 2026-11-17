@@ -1,13 +1,22 @@
-import { useState, type ReactNode } from 'react'
+import { Fragment, useState, type MouseEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useForm, type UseFormRegisterReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { CalendarClock, CalendarDays, Copy, Search, UserPlus, Users } from 'lucide-react'
+import {
+  CalendarClock,
+  CalendarDays,
+  ChevronRight,
+  Copy,
+  Search,
+  UserPlus,
+  Users,
+} from 'lucide-react'
 import { apiDelete, apiGet, apiPatch, apiPost, messageOf } from '@/lib/api'
 import { formatDate, todayKey } from '@/lib/format'
 import { refreshCalendarDependents } from '@/lib/refresh'
+import { cn } from '@/lib/cn'
 import { useAuth } from '@/store/auth'
 import {
   Badge,
@@ -32,6 +41,7 @@ import {
   type BadgeTone,
 } from '@/components/ui'
 import type { LeaveBalance, Paginated, Shift, User } from '@/types'
+import { EmployeeDayPunches } from './EmployeeDayPunches'
 
 /* An account status is a real state of the person, so it may borrow the status
    palette: invited is unfinished, suspended is a stop. */
@@ -98,6 +108,9 @@ export function EmployeesPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [inviting, setInviting] = useState(false)
   const [editing, setEditing] = useState<User | null>(null)
+  // One person's day open under their row: punches, breaks, time worked.
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const toggleExpanded = (id: string) => setExpandedId((current) => (current === id ? null : id))
   const [confirming, setConfirming] = useState<
     { employee: User; intent: 'suspend' | 'remove' } | null
   >(null)
@@ -122,6 +135,13 @@ export function EmployeesPage() {
     // retired still has to show its name, not a dash.
     queryFn: () => apiGet<Shift[]>('/shifts', { include_inactive: true }),
   })
+
+  /* The whole row opens the day, except where the click was meant for one of
+     the row's own controls — Edit, Attendance, the menu. */
+  function onRowClick(event: MouseEvent<HTMLTableRowElement>, id: string) {
+    if ((event.target as HTMLElement).closest('button, a, input, select, [role="menu"]')) return
+    toggleExpanded(id)
+  }
 
   const shiftLabel = (id?: string | null) => {
     if (!id) return 'Default'
@@ -273,6 +293,7 @@ export function EmployeesPage() {
                       <dd className="text-ink-700">
                         {ROLE_LABEL[employee.role] ?? employee.role}
                         {employee.employment_type === 'PART_TIME' && ' · Intern / part-time'}
+                        {employee.work_mode === 'WFH' && ' · Work from home'}
                       </dd>
                     </div>
                     <div>
@@ -286,15 +307,34 @@ export function EmployeesPage() {
                       </dd>
                     </div>
                   </dl>
-                  <div className="mt-3 flex items-center justify-end gap-1">
-                    <EmployeeActions
-                      employee={employee}
-                      isSelf={employee.id === myId}
-                      onEdit={() => setEditing(employee)}
-                      onReinstate={() => setStatus.mutate({ id: employee.id, action: 'activate' })}
-                      onConfirm={(intent) => setConfirming({ employee, intent })}
-                    />
+                  <div className="mt-3 flex items-center justify-between gap-1">
+                    <button
+                      type="button"
+                      aria-expanded={expandedId === employee.id}
+                      onClick={() => toggleExpanded(employee.id)}
+                      className="inline-flex items-center gap-1 text-[13px] text-ink-600 hover:text-ink-900"
+                    >
+                      <ChevronRight
+                        className={cn('size-4 transition-transform', expandedId === employee.id && 'rotate-90')}
+                        aria-hidden
+                      />
+                      Punches and breaks
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <EmployeeActions
+                        employee={employee}
+                        isSelf={employee.id === myId}
+                        onEdit={() => setEditing(employee)}
+                        onReinstate={() => setStatus.mutate({ id: employee.id, action: 'activate' })}
+                        onConfirm={(intent) => setConfirming({ employee, intent })}
+                      />
+                    </div>
                   </div>
+                  {expandedId === employee.id && (
+                    <div className="mt-3">
+                      <EmployeeDayPunches employee={employee} />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -314,47 +354,82 @@ export function EmployeesPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((employee) => (
-                  <Tr key={employee.id}>
-                    <Td>
-                      <span className="block font-medium text-ink-900">{employee.full_name}</span>
-                      <span className="block text-[12px] text-ink-400">{employee.email}</span>
-                    </Td>
-                    <Td>
-                      {employee.role === 'EMPLOYEE' ? (
-                        <span className="text-ink-500">Employee</span>
-                      ) : (
-                        <Badge tone="brand">{ROLE_LABEL[employee.role] ?? employee.role}</Badge>
+                {data.items.map((employee) => {
+                  const expanded = expandedId === employee.id
+                  return (
+                    <Fragment key={employee.id}>
+                      <Tr
+                        onClick={(event) => onRowClick(event, employee.id)}
+                        className={cn(expanded && 'bg-ink-50/70')}
+                      >
+                          <Td>
+                            <button
+                              type="button"
+                              aria-expanded={expanded}
+                              aria-label={`${expanded ? 'Hide' : 'Show'} ${employee.full_name}'s punches and breaks`}
+                              onClick={() => toggleExpanded(employee.id)}
+                              className="flex items-start gap-2 text-left"
+                            >
+                              <ChevronRight
+                                className={cn(
+                                  'mt-0.5 size-4 shrink-0 text-ink-300 transition-transform',
+                                  expanded && 'rotate-90 text-ink-700',
+                                )}
+                                aria-hidden
+                              />
+                              <span>
+                                <span className="block font-medium text-ink-900">{employee.full_name}</span>
+                                <span className="block text-[12px] text-ink-400">{employee.email}</span>
+                              </span>
+                            </button>
+                          </Td>
+                          <Td>
+                            {employee.role === 'EMPLOYEE' ? (
+                              <span className="text-ink-500">Employee</span>
+                            ) : (
+                              <Badge tone="brand">{ROLE_LABEL[employee.role] ?? employee.role}</Badge>
+                            )}
+                            {employee.employment_type === 'PART_TIME' && (
+                              <span className="block text-[11px] text-ink-400">Intern / part-time</span>
+                            )}
+                            {employee.work_mode === 'WFH' && (
+                              <span className="block text-[11px] text-ink-400">Work from home</span>
+                            )}
+                          </Td>
+                          <Td>
+                            <ShiftCell name={shiftLabel(employee.shift_id)} employee={employee} />
+                          </Td>
+                          <Td>{employee.department || '—'}</Td>
+                          <Td>
+                            <Badge tone={STATUS_TONE[employee.status] ?? 'neutral'}>
+                              {employee.status.toLowerCase()}
+                            </Badge>
+                          </Td>
+                          <Td className="tabular hidden whitespace-nowrap 2xl:table-cell">
+                            {employee.joining_date ? formatDate(employee.joining_date) : '—'}
+                          </Td>
+                          <Td className="whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              <EmployeeActions
+                                employee={employee}
+                                isSelf={employee.id === myId}
+                                onEdit={() => setEditing(employee)}
+                                onReinstate={() => setStatus.mutate({ id: employee.id, action: 'activate' })}
+                                onConfirm={(intent) => setConfirming({ employee, intent })}
+                              />
+                            </div>
+                          </Td>
+                      </Tr>
+                      {expanded && (
+                        <tr className="bg-ink-50/70">
+                          <td colSpan={7} className="px-4 pt-1 pb-4">
+                            <EmployeeDayPunches employee={employee} />
+                          </td>
+                        </tr>
                       )}
-                      {employee.employment_type === 'PART_TIME' && (
-                        <span className="block text-[11px] text-ink-400">Intern / part-time</span>
-                      )}
-                    </Td>
-                    <Td>
-                      <ShiftCell name={shiftLabel(employee.shift_id)} employee={employee} />
-                    </Td>
-                    <Td>{employee.department || '—'}</Td>
-                    <Td>
-                      <Badge tone={STATUS_TONE[employee.status] ?? 'neutral'}>
-                        {employee.status.toLowerCase()}
-                      </Badge>
-                    </Td>
-                    <Td className="tabular hidden whitespace-nowrap 2xl:table-cell">
-                      {employee.joining_date ? formatDate(employee.joining_date) : '—'}
-                    </Td>
-                    <Td className="whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1">
-                        <EmployeeActions
-                          employee={employee}
-                          isSelf={employee.id === myId}
-                          onEdit={() => setEditing(employee)}
-                          onReinstate={() => setStatus.mutate({ id: employee.id, action: 'activate' })}
-                          onConfirm={(intent) => setConfirming({ employee, intent })}
-                        />
-                      </div>
-                    </Td>
-                  </Tr>
-                ))}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </Table>
           </>
@@ -645,6 +720,7 @@ const inviteSchema = z
     last_name: z.string().max(60).optional(),
     role: z.enum(['EMPLOYEE', 'MANAGER', 'ADMIN']),
     employment_type: z.enum(['FULL_TIME', 'PART_TIME']),
+    work_mode: z.enum(['OFFICE', 'WFH']),
     designation: z.string().max(100).optional(),
     department: z.string().max(100).optional(),
     employee_code: z.string().max(40).optional(),
@@ -689,7 +765,7 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
     formState: { errors, isSubmitting },
   } = useForm<z.infer<typeof inviteSchema>>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { role: 'EMPLOYEE', employment_type: 'FULL_TIME' },
+    defaultValues: { role: 'EMPLOYEE', employment_type: 'FULL_TIME', work_mode: 'OFFICE' },
   })
 
   const role = watch('role')
@@ -719,7 +795,7 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
       setDelivered(created.email_delivered)
       if (created.email_delivered) toast.success('Invitation sent.')
       else toast.info('Invitation created — the email did not go out.')
-      reset({ role: 'EMPLOYEE', employment_type: 'FULL_TIME' })
+      reset({ role: 'EMPLOYEE', employment_type: 'FULL_TIME', work_mode: 'OFFICE' })
     } catch (submitError) {
       const message = messageOf(submitError, 'The invitation was not sent.')
       setError(message)
@@ -824,6 +900,7 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
 
         <FormSection title="Where they sit">
           <EmploymentTypeField register={register('employment_type')} />
+          <WorkModeField register={register('work_mode')} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Job title" error={errors.designation?.message}>
               <Input placeholder="Accounts executive" {...register('designation')} />
@@ -872,6 +949,21 @@ function EmploymentTypeField({ register }: { register: UseFormRegisterReturn }) 
   )
 }
 
+/** Office or home — home turns on screen capture for this person. */
+function WorkModeField({ register }: { register: UseFormRegisterReturn }) {
+  return (
+    <Field
+      label="Mode of work"
+      hint="Working from home turns on screen capture: they share their screen to punch in, and screenshots appear under Employees → Work from home."
+    >
+      <Select {...register}>
+        <option value="OFFICE">Work from office</option>
+        <option value="WFH">Work from home</option>
+      </Select>
+    </Field>
+  )
+}
+
 /* -------------------------------------------------------------------------- */
 /* Edit                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -880,6 +972,7 @@ const editSchema = z
     first_name: z.string().max(60).optional(),
     last_name: z.string().max(60).optional(),
     employment_type: z.enum(['FULL_TIME', 'PART_TIME']),
+    work_mode: z.enum(['OFFICE', 'WFH']),
     designation: z.string().max(100).optional(),
     department: z.string().max(100).optional(),
     employee_code: z.string().max(40).optional(),
@@ -926,6 +1019,7 @@ function EditModal({ employee, onClose }: { employee: User | null; onClose: () =
       first_name: employee?.first_name ?? '',
       last_name: employee?.last_name ?? '',
       employment_type: employee?.employment_type ?? 'FULL_TIME',
+      work_mode: employee?.work_mode ?? 'OFFICE',
       designation: employee?.designation ?? '',
       department: employee?.department ?? '',
       employee_code: employee?.employee_code ?? '',
@@ -958,6 +1052,8 @@ function EditModal({ employee, onClose }: { employee: User | null; onClose: () =
       )
       await apiPatch(`/users/${employee!.id}`, payload)
       queryClient.invalidateQueries({ queryKey: ['employees'] })
+      // Moving somebody to or from home changes who the work-from-home page lists.
+      queryClient.invalidateQueries({ queryKey: ['screenshots'] })
       // A changed shift or shift window moves their calendar, the register and
       // the lapsed-window signal on the operations feed.
       refreshCalendarDependents(queryClient)
@@ -1003,6 +1099,7 @@ function EditModal({ employee, onClose }: { employee: User | null; onClose: () =
 
         <FormSection title="Where they sit">
           <EmploymentTypeField register={register('employment_type')} />
+          <WorkModeField register={register('work_mode')} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Job title" error={errors.designation?.message}>
               <Input {...register('designation')} />

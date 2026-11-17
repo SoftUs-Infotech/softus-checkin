@@ -63,6 +63,8 @@ const schema = z.object({
   working_saturdays: z.string().optional(),
   fifth_saturday: z.enum(['UNDECIDED', 'WORKING', 'OFF']),
   comp_off_expiry_days: z.coerce.number().int().min(0).max(730),
+
+  wfh_screenshot_interval_minutes: z.coerce.number().int().min(5, 'At least 5 minutes.').max(60, 'At most 60 minutes.'),
 })
 
 /** `"1, 3"` → `[1, 3]`, ignoring anything that is not a Saturday number. */
@@ -134,6 +136,7 @@ export function SettingsPage() {
                 ? 'WORKING'
                 : 'OFF',
           comp_off_expiry_days: data.comp_off_expiry_days,
+          wfh_screenshot_interval_minutes: data.wfh_screenshot_interval_minutes ?? 10,
         }
       : undefined,
   })
@@ -165,6 +168,7 @@ export function SettingsPage() {
   const autoCloseHour = Number(watch('auto_close_hour'))
   const leaveYearMonth = Number(watch('leave_year_start_month'))
   const lateThreshold = Number(watch('late_arrivals_per_half_day'))
+  const screenshotMinutes = Number(watch('wfh_screenshot_interval_minutes'))
 
   if (isLoading || !data) {
     return (
@@ -320,6 +324,24 @@ export function SettingsPage() {
                 max="3600"
                 className="tabular"
                 {...register('min_punch_gap_seconds')}
+              />
+            </Field>
+
+            <Field
+              label="Work-from-home screenshot interval (minutes)"
+              hint={
+                Number.isFinite(screenshotMinutes) && screenshotMinutes > 0
+                  ? `While somebody working from home is punched in, one screenshot is taken at a random moment in every ${screenshotMinutes} minutes.`
+                  : 'While somebody working from home is punched in, one screenshot is taken at a random moment in every window of this length.'
+              }
+              error={errors.wfh_screenshot_interval_minutes?.message}
+            >
+              <Input
+                type="number"
+                min="5"
+                max="60"
+                className="tabular"
+                {...register('wfh_screenshot_interval_minutes')}
               />
             </Field>
 

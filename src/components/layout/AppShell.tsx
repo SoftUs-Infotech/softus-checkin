@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bell,
@@ -9,6 +9,7 @@ import {
   Clock,
   FileClock,
   Gauge,
+  House,
   LogOut,
   Megaphone,
   Menu,
@@ -25,6 +26,7 @@ import { apiGet } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { orgNowParts, orgTimeZoneName, setOrgTimeZone } from '@/lib/format'
 import { useAuth } from '@/store/auth'
+import { ScreenCaptureManager } from '@/features/wfh/ScreenCaptureManager'
 import { NotificationPanel } from './NotificationPanel'
 
 interface NavItem {
@@ -32,6 +34,8 @@ interface NavItem {
   label: string
   icon: typeof Gauge
   badge?: 'corrections' | 'leave' | 'tasks'
+  /** Shown under the item on hover, and kept open while one of them is the page. */
+  children?: NavItem[]
 }
 
 const EMPLOYEE_NAV: NavItem[] = [
@@ -58,7 +62,12 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/register', label: 'Daily register', icon: Clock },
   { to: '/admin/approvals', label: 'Approvals', icon: ShieldCheck, badge: 'corrections' },
   { to: '/admin/tasks', label: 'Tasks', icon: ClipboardList },
-  { to: '/admin/employees', label: 'Employees', icon: Users },
+  {
+    to: '/admin/employees',
+    label: 'Employees',
+    icon: Users,
+    children: [{ to: '/admin/employees/work-from-home', label: 'Work from home', icon: House }],
+  },
   { to: '/admin/shifts', label: 'Shifts', icon: CalendarRange },
   { to: '/admin/leaves', label: 'Leaves', icon: Palmtree },
   { to: '/admin/holidays', label: 'Holidays', icon: CalendarDays },
@@ -273,6 +282,9 @@ export function AppShell() {
         {/* Capped so a very wide monitor stretches the margins, not the content. */}
         <main className="min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">
           <div className="mx-auto w-full max-w-[1480px]">
+            {/* Working from home: keeps screen capture going on every page, and
+                asks for it back if it stops mid-day. Renders nothing otherwise. */}
+            {hasPersonalSpace() && <ScreenCaptureManager />}
             <Outlet />
           </div>
         </main>
@@ -318,6 +330,8 @@ function NavGroup({
   pending?: { corrections: number; leave: number; tasks: number }
   onNavigate: () => void
 }) {
+  const { pathname } = useLocation()
+
   return (
     <div className="mb-5">
       <p className="px-3 pb-2 text-[10px] font-semibold tracking-[0.18em] text-ink-400 uppercase">
@@ -331,8 +345,11 @@ function NavGroup({
                 ? pending.corrections + pending.leave + pending.tasks
                 : pending[item.badge]
               : 0
+          // On a child's page the child is the highlighted row, not its parent.
+          const childActive =
+            item.children?.some((child) => pathname.startsWith(child.to)) ?? false
           return (
-            <li key={item.to}>
+            <li key={item.to} className={cn(item.children && 'group/nav')}>
               <NavLink
                 to={item.to}
                 end={item.to === '/' || item.to === '/admin'}
@@ -340,7 +357,7 @@ function NavGroup({
                 className={({ isActive }) =>
                   cn(
                     'flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors',
-                    isActive
+                    isActive && !childActive
                       ? 'bg-ink-900 font-medium text-white'
                       : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900',
                   )
@@ -354,6 +371,36 @@ function NavGroup({
                   </span>
                 )}
               </NavLink>
+              {item.children && (
+                /* Revealed by hovering (or tabbing into) the parent on a desktop;
+                   always listed in the phone drawer, which has no hover. */
+                <ul
+                  className={cn(
+                    'mt-0.5 ml-[21px] space-y-0.5 border-l border-rule pl-2',
+                    !childActive && 'lg:hidden lg:group-focus-within/nav:block lg:group-hover/nav:block',
+                  )}
+                >
+                  {item.children.map((child) => (
+                    <li key={child.to}>
+                      <NavLink
+                        to={child.to}
+                        onClick={onNavigate}
+                        className={({ isActive }) =>
+                          cn(
+                            'flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors',
+                            isActive
+                              ? 'bg-ink-900 font-medium text-white'
+                              : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900',
+                          )
+                        }
+                      >
+                        <child.icon className="size-4 shrink-0" />
+                        <span className="flex-1 truncate">{child.label}</span>
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           )
         })}
