@@ -186,6 +186,36 @@ export async function apiDelete<T>(url: string): Promise<T> {
   return response.data.data
 }
 
+/**
+ * Sends a file as multipart form data. The client's default JSON content type
+ * would make axios serialise the form to JSON, so it is overridden; axios then
+ * leaves the header to the browser, which adds the multipart boundary.
+ */
+export async function apiUpload<T>(
+  url: string,
+  fields: Record<string, Blob | string | number | null | undefined>,
+): Promise<T> {
+  const form = new FormData()
+  for (const [key, value] of Object.entries(fields)) {
+    if (value == null) continue
+    form.append(key, value instanceof Blob ? value : String(value))
+  }
+  const response = await http.post<ApiEnvelope<T>>(url, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60_000,
+  })
+  return response.data.data
+}
+
+/**
+ * A link the API handed out, made loadable by the browser. S3 links are
+ * absolute already; a locally stored file comes back as a path under the API
+ * prefix (`/files?…`), which only means something joined onto `API_BASE`.
+ */
+export function resolveApiUrl(url: string): string {
+  return /^https?:\/\//.test(url) ? url : `${API_BASE}${url}`
+}
+
 export function messageOf(error: unknown, fallback = 'Something went wrong.'): string {
   if (error instanceof ApiError) return error.message
   if (error instanceof Error) return error.message

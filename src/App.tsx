@@ -16,6 +16,7 @@ import { LeavePage } from '@/features/leave/LeavePage'
 import { ProfilePage } from '@/features/profile/ProfilePage'
 import { ApprovalsPage } from '@/features/admin/ApprovalsPage'
 import { EmployeesPage } from '@/features/admin/EmployeesPage'
+import { WorkFromHomePage } from '@/features/admin/WorkFromHomePage'
 import { ShiftsPage } from '@/features/admin/ShiftsPage'
 import { LeavesPage } from '@/features/admin/LeavesPage'
 import { HolidaysPage } from '@/features/admin/HolidaysPage'
@@ -224,6 +225,14 @@ export default function App() {
           element={
             <RequireAdmin>
               <EmployeesPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="admin/employees/work-from-home"
+          element={
+            <RequireAdmin>
+              <WorkFromHomePage />
             </RequireAdmin>
           }
         />

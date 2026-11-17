@@ -2,6 +2,8 @@
 
 export type UserRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE'
 export type UserStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED'
+/** WFH turns on screen capture: they share their screen to punch in. */
+export type WorkMode = 'OFFICE' | 'WFH'
 
 export interface User {
   id: string
@@ -15,6 +17,8 @@ export interface User {
   department?: string | null
   /** PART_TIME (interns, part-timers) is paid in proportion to hours worked. */
   employment_type?: EmploymentType
+  /** Absent on accounts that predate it, which work from the office. */
+  work_mode?: WorkMode
   role: UserRole
   status: UserStatus
   shift_id?: string | null
@@ -95,7 +99,20 @@ export interface AttendanceSession {
   punch_in: PunchEvent
   punch_out?: PunchEvent | null
   auto_closed: boolean
+  /** Set when the system ended the session: `SCREEN_SHARE_STOPPED` for somebody
+      working from home whose screen stopped being shared. */
+  closed_reason?: string | null
   duration_minutes: number
+}
+
+/** The time between one punch-out and the next punch-in. */
+export interface DayBreak {
+  start: string
+  end: string
+  minutes: number
+  /** `BREAK` when they punched out themselves; `SCREEN_SHARE_STOPPED` when the
+      system punched somebody working from home out because sharing stopped. */
+  kind: 'BREAK' | 'SCREEN_SHARE_STOPPED'
 }
 
 export interface AttendanceDay {
@@ -113,6 +130,11 @@ export interface AttendanceDay {
   first_punch_in?: string | null
   last_punch_out?: string | null
   sessions: AttendanceSession[]
+  breaks?: DayBreak[]
+  /** Minutes of breaks the employee took themselves. */
+  break_minutes?: number
+  /** Minutes away after screen sharing stopped (working from home). */
+  unshared_minutes?: number
   holiday_name?: string | null
   leave_type?: string | null
   leave_day_part?: string | null
@@ -183,6 +205,10 @@ export interface TodayState {
   /** No shift assignment covers today. Never blocks a punch — a shift is a
       planned window, and its lapsing is a signal to the administrator. */
   no_shift_assigned?: boolean
+  /** Works from home: punching in needs the screen shared first. */
+  screen_capture_required?: boolean
+  /** One screenshot at a random moment in every window of this many minutes. */
+  screen_capture_interval_minutes?: number
 }
 
 export interface MonthSummary {
@@ -450,6 +476,7 @@ export interface OrgSettings {
   working_saturdays: number[]
   fifth_saturday_working?: boolean | null
   comp_off_expiry_days: number
+  wfh_screenshot_interval_minutes: number
 
   support_email?: string | null
   /** The go-live reset: attendance counts from this day. Null until pressed. */
@@ -606,4 +633,57 @@ export interface BulkResponse {
   succeeded: number
   failed: number
   results: BulkResult[]
+}
+
+/* -------------------------------------------------------------------------- */
+/* Work from home                                                              */
+/* -------------------------------------------------------------------------- */
+export interface Screenshot {
+  id: string
+  user_id: string
+  date: string
+  captured_at: string
+  content_type: string
+  size_bytes: number
+  width?: number | null
+  height?: number | null
+  /** Short-lived. Absolute for S3; for local storage, a path under the API
+      prefix — pass it through `resolveApiUrl`. */
+  url: string
+}
+
+export interface ScreenshotPerson {
+  id: string
+  full_name: string
+  email: string
+  employee_code?: string | null
+  designation?: string | null
+  department?: string | null
+  work_mode: WorkMode
+  status?: UserStatus | null
+  /** The account was removed, but its screenshots are still stored. */
+  removed: boolean
+  on_day: number
+  last_captured_at?: string | null
+  total_count: number
+  total_bytes: number
+}
+
+export interface ScreenshotSummary {
+  date: string
+  interval_minutes: number
+  totals: { people_wfh: number; on_day: number; count: number; size_bytes: number }
+  people: ScreenshotPerson[]
+}
+
+export interface ScreenshotDay {
+  date: string
+  count: number
+  size_bytes: number
+}
+
+export interface ScreenshotDeleteResult {
+  deleted: number
+  freed_bytes: number
+  failed: number
 }

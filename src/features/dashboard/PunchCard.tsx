@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { CalendarOff, MapPin, MonitorSmartphone, ShieldAlert, Timer } from 'lucide-react'
-import { apiGet, apiPost, messageOf } from '@/lib/api'
+import { CalendarOff, MapPin, MonitorSmartphone, ScreenShare, ShieldAlert, Timer } from 'lucide-react'
+import { apiGet, messageOf } from '@/lib/api'
 import { looksLikeAComputer } from '@/lib/device'
-import { currentPosition } from '@/lib/location'
+import { punch as punchNow, SCREEN_SHARE_STOPPED } from '@/lib/punch'
+import { useScreenCapture } from '@/lib/screenCapture'
 import { formatMinutes, formatTime } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { Badge, Card, ErrorNote, Skeleton, useToast, type BadgeTone } from '@/components/ui'
-import type { AttendanceDay, TodayState } from '@/types'
+import type { TodayState } from '@/types'
 import { PunchDial } from './PunchDial'
 
 /*
@@ -61,24 +62,10 @@ export function PunchCard() {
   }, [data?.can_punch_out, dataUpdatedAt])
 
   const onAComputer = useMemo(() => looksLikeAComputer(), [])
+  const capture = useScreenCapture()
 
   const punch = useMutation({
-    mutationFn: async (action: 'punch-in' | 'punch-out') => {
-      let location: Record<string, number> | undefined
-      if (data?.geolocation_required !== false) {
-        const position = await currentPosition()
-        location = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy_metres: position.coords.accuracy,
-        }
-      }
-      return apiPost<AttendanceDay>(`/attendance/${action}`, {
-        location,
-        // A stable key per action per minute: a double-click cannot punch twice.
-        request_key: `${action}-${new Date().toISOString().slice(0, 16)}`,
-      })
-    },
+    mutationFn: (action: 'punch-in' | 'punch-out') => punchNow(action, data),
     onMutate: () => setError(null),
     onSuccess: (_result, action) => {
       queryClient.invalidateQueries({ queryKey: ['attendance-today'] })
@@ -238,6 +225,18 @@ export function PunchCard() {
           />
         )}
 
+        {data.screen_capture_required && (
+          <Notice
+            icon={<ScreenShare className="mt-0.5 size-4 shrink-0" />}
+            title="You are working from home"
+            body={screenCaptureSentence({
+              working,
+              active: capture.status === 'active' || capture.elsewhere,
+              minutes: data.screen_capture_interval_minutes ?? 10,
+            })}
+          />
+        )}
+
         {data.geolocation_required && (
           <p className="flex items-center gap-2 text-[12px] text-ink-400">
             <MapPin className="size-3.5 shrink-0" aria-hidden />
@@ -270,7 +269,9 @@ export function PunchCard() {
                           : 'text-ink-500',
                     )}
                   >
-                    {session.punch_out
+                    {session.closed_reason === SCREEN_SHARE_STOPPED
+                      ? `${formatMinutes(session.duration_minutes)} · punched out automatically`
+                      : session.punch_out
                       ? formatMinutes(session.duration_minutes)
                       : session.auto_closed
                         ? 'Never punched out'
@@ -291,6 +292,28 @@ export function PunchCard() {
 }
 
 /* -------------------------------------------------------------------------- */
+
+/** That screen capture is on, said plainly. Never *when* a screenshot was taken:
+    the moments are random so they cannot be worked around, and announcing each
+    one would undo that. */
+function screenCaptureSentence({
+  working,
+  active,
+  minutes,
+}: {
+  working: boolean
+  active: boolean
+  minutes: number
+}): string {
+  const rhythm = `a screenshot is taken at a random moment every ${minutes} minutes and shown to your administrator`
+  if (!working) {
+    return `Punching in asks you to share your entire screen. While you are punched in, ${rhythm}. If you stop sharing, you are punched out. Sharing stops when you punch out.`
+  }
+  if (!active) {
+    return 'You are being punched out.'
+  }
+  return `Your screen is being shared: ${rhythm} until you punch out.`
+}
 
 /* Two figures at the foot of the column, ruled off rather than boxed in — the
    totals line of a register. `done` is weight, not colour. */
