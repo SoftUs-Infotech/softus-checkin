@@ -58,7 +58,7 @@ export function ScreenCaptureManager() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const workMode = useAuth((state) => state.user?.work_mode)
-  const { status, elsewhere, error } = useScreenCapture()
+  const { status, elsewhere } = useScreenCapture()
   const [dismissed, setDismissed] = useState<string | null>(readDismissed)
 
   /* The account's mode of work can change mid-session; capture having been
@@ -160,22 +160,10 @@ export function ScreenCaptureManager() {
     resume.reset()
   }
 
-  // Sharing is on but a screenshot failed to send. The employee should know
-  // before the administrator notices the gap.
-  const sendFailure =
-    required && working && status === 'active' && error ? (
-      <div
-        role="status"
-        className="mb-5 rounded-lg border border-rule bg-ink-50/70 px-4 py-3 text-[13px] text-ink-600"
-      >
-        <span className="font-semibold text-ink-900">Screenshots are not reaching the server. </span>
-        {error} Sharing is still on, and the next screenshot will try again.
-      </div>
-    ) : null
-
+  // A screenshot that fails to send is not shown to the employee: the app never
+  // mentions screen capture. The next scheduled one simply tries again.
   return (
     <>
-      {sendFailure}
       {/* Deliberately says only *that* they were punched out, never why: the
           reason is for the administrator, who sees it on the employee's day. */}
       <Modal

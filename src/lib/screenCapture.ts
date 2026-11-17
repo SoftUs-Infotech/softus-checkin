@@ -54,6 +54,18 @@ export const useScreenCapture = create<CaptureState>(() => ({
 
 const set = useScreenCapture.setState
 
+/*
+  What the employee is told when punching in fails. The app never explains
+  screen capture (office policy does). The only time it names the screen is
+  when the whole screen was not shared, and then only as what to do to punch
+  in. Every other failure reads as an ordinary punch-in failure.
+*/
+export const PUNCH_IN_FAILED = 'Punch in failed. Please try again.'
+const SHARE_ENTIRE_SCREEN = 'To punch in, please share your entire screen.'
+const ALLOW_SCREEN_ON_MAC =
+  'To punch in, allow your browser to share your entire screen. On a Mac: System Settings → Privacy & Security → Screen Recording, turn your browser on, then restart the browser.'
+const USE_CHROME_OR_EDGE = 'This browser is not supported. Please use Chrome or Edge.'
+
 /** A failure worth showing to the employee in its own words. */
 export class CaptureError extends Error {
   constructor(message: string) {
@@ -81,9 +93,7 @@ export async function startCapture(): Promise<void> {
   if (captureRunning()) return
   if (!captureSupported()) {
     set({ status: 'unsupported' })
-    throw new CaptureError(
-      'This browser cannot share a screen. Use Chrome, Edge or Firefox on your computer.',
-    )
+    throw new CaptureError(USE_CHROME_OR_EDGE)
   }
 
   set({ status: 'starting', error: null })
@@ -108,21 +118,19 @@ export async function startCapture(): Promise<void> {
       !blockedBySystem &&
       error instanceof DOMException &&
       (error.name === 'NotAllowedError' || error.name === 'AbortError')
-    const message = blockedBySystem
-      ? 'Your computer is not letting this browser record the screen. On a Mac: System Settings → Privacy & Security → Screen Recording, turn your browser on, restart the browser, then punch in again.'
-      : cancelled
-        ? 'Screen sharing was cancelled. You are working from home, so your screen has to be shared to punch in.'
-        : 'Your screen could not be shared. Check that the browser is allowed to record the screen, then try again.'
+    const message = blockedBySystem ? ALLOW_SCREEN_ON_MAC : SHARE_ENTIRE_SCREEN
     set({ status: cancelled ? 'denied' : 'stopped', error: message })
     throw new CaptureError(message)
   }
 
   const [track] = media.getVideoTracks()
-  // A single window or tab would show only what the employee chose to show.
+  // Only the entire screen is accepted, and only when the browser confirms it:
+  // a single window or tab would show only what the employee chose to show,
+  // and a browser that does not say what was shared cannot prove it was whole.
   const surface = track?.getSettings().displaySurface
-  if (!track || (surface && surface !== 'monitor')) {
+  if (!track || surface !== 'monitor') {
     media.getTracks().forEach((each) => each.stop())
-    const message = 'Share your entire screen, not a single window or browser tab.'
+    const message = surface ? SHARE_ENTIRE_SCREEN : USE_CHROME_OR_EDGE
     set({ status: 'stopped', error: message })
     throw new CaptureError(message)
   }
@@ -194,7 +202,7 @@ async function videoReady(element: HTMLVideoElement): Promise<void> {
 async function grab(): Promise<{ blob: Blob; width: number; height: number }> {
   const track = stream?.getVideoTracks()[0]
   if (!track || track.readyState !== 'live') {
-    throw new CaptureError('Screen capture is not running.')
+    throw new CaptureError(PUNCH_IN_FAILED)
   }
 
   let source: CanvasImageSource | null = null
@@ -220,7 +228,7 @@ async function grab(): Promise<{ blob: Blob; width: number; height: number }> {
     sourceHeight = video.videoHeight
   }
   if (!source || !sourceWidth || !sourceHeight) {
-    throw new CaptureError('The shared screen did not produce a picture.')
+    throw new CaptureError(PUNCH_IN_FAILED)
   }
 
   const scale = Math.min(1, MAX_WIDTH / sourceWidth)
@@ -235,7 +243,7 @@ async function grab(): Promise<{ blob: Blob; width: number; height: number }> {
   const blob = await new Promise<Blob | null>((resolve) =>
     canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY),
   )
-  if (!blob) throw new CaptureError('The screenshot could not be encoded.')
+  if (!blob) throw new CaptureError(PUNCH_IN_FAILED)
   return { blob, width, height }
 }
 
