@@ -118,8 +118,13 @@ async function installMac(downloaded) {
   handOver([
     `rm -rf ${quote(current)}`,
     `/usr/bin/ditto ${quote(fresh)} ${quote(current)}`,
-    // Downloaded by the app itself, so not quarantined — but make sure.
-    `/usr/bin/xattr -dr com.apple.quarantine ${quote(current)} 2>/dev/null`,
+    // Downloaded by the app itself, so not quarantined — but make sure; and
+    // codesign refuses a bundle that still carries extended attributes.
+    `/usr/bin/xattr -cr ${quote(current)} 2>/dev/null`,
+    // A version built on Linux arrives without a signature, and a Mac with
+    // Apple silicon refuses to open unsigned code ("is damaged"). Every Mac
+    // has codesign; an ad-hoc signature ("-") is all the app ever has.
+    `/usr/bin/codesign --force --deep --sign - ${quote(current)} 2>/dev/null`,
     `rm -rf ${quote(extractTo)} ${quote(downloaded)}`,
     `/usr/bin/open ${quote(current)}`,
   ])

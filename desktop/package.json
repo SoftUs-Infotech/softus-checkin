@@ -1,7 +1,7 @@
 {
   "name": "softus-checkin-desktop",
   "productName": "Softus Checkin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Softus Checkin desktop app for work-from-home attendance",
   "author": "SoftUs Infotech",
   "private": true,
