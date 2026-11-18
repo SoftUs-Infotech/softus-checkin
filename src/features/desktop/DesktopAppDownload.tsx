@@ -8,6 +8,7 @@ const ARCH_LABEL: Record<string, string> = {
   x64: 'Intel',
   universal: 'any Mac',
 }
+const WINDOWS_LABEL: Record<string, string> = { x64: 'Windows', arm64: 'Windows on ARM' }
 
 /*
   On the website, for somebody who has to punch in from the desktop app: what
@@ -17,11 +18,12 @@ export function DesktopAppDownload() {
   const releases = useQuery({
     queryKey: ['app-releases', 'downloads'],
     queryFn: async () => {
-      const [mac, linux] = await Promise.all([
+      const [mac, linux, windows] = await Promise.all([
         apiGet<AppRelease | null>('/app-releases/latest', { platform: 'mac' }),
         apiGet<AppRelease | null>('/app-releases/latest', { platform: 'linux' }),
+        apiGet<AppRelease | null>('/app-releases/latest', { platform: 'windows' }),
       ])
-      return { mac, linux }
+      return { mac, linux, windows }
     },
     staleTime: 5 * 60_000,
   })
@@ -32,6 +34,9 @@ export function DesktopAppDownload() {
   }
   for (const file of releases.data?.linux?.files ?? []) {
     if (file.kind === 'appimage') links.push({ label: 'Linux', file })
+  }
+  for (const file of releases.data?.windows?.files ?? []) {
+    if (file.kind === 'exe') links.push({ label: WINDOWS_LABEL[file.arch] ?? 'Windows', file })
   }
 
   return (

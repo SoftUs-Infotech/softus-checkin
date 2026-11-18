@@ -99,17 +99,19 @@ export const desktop: DesktopBridge | null =
 export const isDesktop = desktop !== null
 
 /** The platform name releases are published under. */
-export function releasePlatform(): 'mac' | 'linux' | null {
+export function releasePlatform(): 'mac' | 'linux' | 'windows' | null {
   if (!desktop) return null
   if (desktop.platform === 'darwin') return 'mac'
   if (desktop.platform === 'linux') return 'linux'
+  if (desktop.platform === 'win32') return 'windows'
   return null
 }
 
 /** The file kind this platform updates itself from. */
-export function updateKind(): 'zip' | 'appimage' | null {
+export function updateKind(): 'zip' | 'appimage' | 'exe' | null {
+  const kinds = { mac: 'zip', linux: 'appimage', windows: 'exe' } as const
   const platform = releasePlatform()
-  return platform === 'mac' ? 'zip' : platform === 'linux' ? 'appimage' : null
+  return platform ? kinds[platform] : null
 }
 
 /** `1.0.10` > `1.0.9`; a pre-release sorts before its release. */

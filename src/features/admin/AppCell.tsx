@@ -3,7 +3,11 @@ import { formatDateTime } from '@/lib/format'
 import { Badge } from '@/components/ui'
 import type { PublishedVersions, User } from '@/types'
 
-const RELEASE_PLATFORM: Record<string, keyof PublishedVersions> = { darwin: 'mac', linux: 'linux' }
+const RELEASE_PLATFORM: Record<string, keyof PublishedVersions> = {
+  darwin: 'mac',
+  linux: 'linux',
+  win32: 'windows',
+}
 
 /**
  * Which app somebody uses: the desktop app's version and system, flagged when
@@ -15,9 +19,10 @@ export function AppCell({ employee, published }: { employee: User; published?: P
     const platform = RELEASE_PLATFORM[app.os ?? '']
     const current = platform ? published?.[platform] : null
     const outdated = Boolean(current && compareVersions(app.version, current) < 0)
-    // macOS reports a number ("14.5.0"); Linux its distribution ("Ubuntu 22.04.5 LTS").
+    // macOS reports a number ("14.5.0"); Linux its distribution ("Ubuntu 22.04.5 LTS");
+    // Windows its name and build ("Windows 11 (10.0.22631)").
     const system =
-      app.os === 'linux' && app.os_version
+      (app.os === 'linux' || app.os === 'win32') && app.os_version
         ? app.os_version
         : [OS_NAME[app.os ?? ''] ?? app.os, app.os_version].filter(Boolean).join(' ')
     return (

@@ -57,15 +57,20 @@ export async function punch(
 
   try {
     let location: Record<string, number> | undefined
-    // The Linux app cannot read a location; the server records the network
-    // address of every punch instead.
+    // The server records the network address of every punch. The Linux app
+    // cannot read a location at all; the Windows app gets one only when
+    // Windows' location service answers, and punches without it otherwise.
     const canLocate = desktop?.platform !== 'linux'
     if (today?.geolocation_required !== false && canLocate) {
-      const position = await currentPosition()
-      location = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy_metres: position.coords.accuracy,
+      try {
+        const position = await currentPosition()
+        location = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy_metres: position.coords.accuracy,
+        }
+      } catch (error) {
+        if (desktop?.platform !== 'win32') throw error
       }
     }
     // Which punch of the day this is, within the minute: a double click repeats

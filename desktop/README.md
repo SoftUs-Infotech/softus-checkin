@@ -1,6 +1,6 @@
 # Softus Checkin — desktop app
 
-The app work-from-home staff punch in from, for **Mac and Linux**. It shows the
+The app work-from-home staff punch in from, for **Mac, Linux and Windows**. It shows the
 same screens as the website (they are built into the app from `../src`), and
 adds what a browser cannot do:
 
@@ -22,14 +22,15 @@ in only from the desktop app** once everybody working from home has installed it
 
 ## Platforms
 
-| | Mac (Apple silicon and Intel) | Linux (x64 and ARM) |
-|---|---|---|
-| Install | `.dmg` | `.AppImage` — one file for every distribution |
-| Update file | `.zip` | the same `.AppImage` |
-| First run | Allow **Screen Recording** and **Accessibility** in System Settings → Privacy & Security | **Set up this computer** (administrator password, once); on Wayland also **Choose your screen** (once) |
-| Keys and clicks | macOS input hook (needs Accessibility) | the activity helper (below) — Xorg and Wayland alike |
-| Screenshots | silent | Xorg: silent · GNOME/KDE on Wayland: the screen is chosen once, then silent · Sway/Hyprland/COSMIC: silent |
-| Location | macOS Location Services | not available; the server records the network address instead |
+| | Mac (Apple silicon and Intel) | Linux (x64 and ARM) | Windows 10 and 11 (x64) |
+|---|---|---|---|
+| Install | `.dmg` | `.AppImage` — one file for every distribution | `.exe` installer — for the current user, no administrator password |
+| Update file | `.zip` | the same `.AppImage` | the same `.exe` (run silently) |
+| First run | Allow **Screen Recording** and **Accessibility** in System Settings → Privacy & Security | **Set up this computer** (administrator password, once); on Wayland also **Choose your screen** (once) | nothing to allow |
+| Keys and clicks | macOS input hook (needs Accessibility) | the activity helper (below) — Xorg and Wayland alike | Windows input hook |
+| Software input check | — | yes (the helper) | — |
+| Screenshots | silent | Xorg: silent · GNOME/KDE on Wayland: the screen is chosen once, then silent · Sway/Hyprland/COSMIC: silent | silent |
+| Location | macOS Location Services | not available; the server records the network address instead | Windows location service when it answers; otherwise the network address |
 
 ### Mac: unsigned
 
@@ -40,6 +41,19 @@ The app is **not signed** with an Apple Developer ID. Two consequences:
 2. macOS treats every update as a new app, so Screen Recording and
    Accessibility have to be allowed again after each update. The app shows what
    to allow and blocks punching in until it is done.
+
+### Windows: unsigned
+
+The installer is **not signed** either. The first time it is opened, Windows
+shows "Windows protected your PC": click **More info**, then **Run anyway**.
+It installs for the current user only (in `%LOCALAPPDATA%\Programs`), adds
+Start menu and desktop shortcuts, and starts the app. Updates the app
+downloads itself are run silently and are not asked about.
+
+For a location, Windows' **Location** setting (Settings → Privacy & security →
+Location) has to be on, with "Let desktop apps access your location". When
+Windows gives no location, the punch is still made and the server records the
+network address.
 
 ### Linux: the one-time setup
 
@@ -111,11 +125,25 @@ npm run dist:mac
 npm run dist:linux     # builds the helper, the screens, then the AppImage
 ```
 
+**Windows**, on a Windows computer:
+
+```bash
+npm run dist:win
+```
+
+or on Linux (or a Mac) with Docker, inside electron-builder's image, which
+has the Wine that Windows builds need (about 1.5 GB, downloaded once):
+
+```bash
+npm run dist:win:docker
+```
+
 Files land in `desktop/dist/`:
 
 - `softus-checkin-1.0.0-mac-arm64.dmg` / `…-mac-x64.dmg` — give these to people to install
 - `softus-checkin-1.0.0-mac-arm64.zip` / `…-mac-x64.zip` — what Macs update from
 - `softus-checkin-1.0.0-linux-x86_64.AppImage` — install and update file for Linux
+- `softus-checkin-1.0.0-win-x64.exe` — install and update file for Windows
 
 The API address is built in and defaults to production
 (`https://140.245.28.23/api/v1`). For a build against another server:
@@ -127,10 +155,11 @@ VITE_API_BASE=https://other-server/api/v1 npm run dist:mac
 ## Releasing a new version
 
 1. Raise `"version"` in `desktop/package.json` (e.g. `1.0.0` → `1.0.1`).
-2. Build on a Mac (`npm run dist:mac`) and on Linux (`npm run dist:linux`).
+2. Build on a Mac (`npm run dist:mac`), on Linux (`npm run dist:linux`) and for
+   Windows (`npm run dist:win` or `npm run dist:win:docker`).
 3. As an admin, open **App updates**, choose all the files of that version
-   (both `.zip`, both `.dmg`, the `.AppImage`) and upload. The version and
-   platform are read from the file names.
+   (both `.zip`, both `.dmg`, the `.AppImage`, the `.exe`) and upload. The
+   version and each file's platform are read from the file names.
 4. Click **Publish** on each platform's draft. From the next punch-in, every
    older app on that platform updates first.
 

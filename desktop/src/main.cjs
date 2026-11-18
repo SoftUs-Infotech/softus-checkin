@@ -58,6 +58,18 @@ if (
   return
 }
 
+/*
+  Windows: punches read the location from Windows' own location service
+  (Electron otherwise asks a Google web service it has no key for). When
+  Windows gives none, the punch goes ahead without it and the server records
+  the network address.
+*/
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('enable-features', 'WinrtGeolocationImplementation')
+  // The taskbar groups and pins the app under the installer's shortcuts.
+  app.setAppUserModelId('com.softusinfotech.checkin')
+}
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: SCHEME,
@@ -69,6 +81,11 @@ let win = null
 
 function osVersion() {
   if (process.platform === 'darwin') return process.getSystemVersion()
+  if (process.platform === 'win32') {
+    // 10.0.22631: Windows 11 reports itself as 10.0, from build 22000 on.
+    const build = Number(os.release().split('.')[2]) || 0
+    return `Windows ${build >= 22000 ? '11' : '10'} (${os.release()})`
+  }
   if (process.platform === 'linux') {
     try {
       const release = fs.readFileSync('/etc/os-release', 'utf8')

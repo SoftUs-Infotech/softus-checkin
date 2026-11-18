@@ -22,7 +22,19 @@ import {
 } from '@/components/ui'
 import type { AppRelease, ReleaseFile } from '@/types'
 
-const PLATFORM_LABEL = { mac: 'Mac', linux: 'Linux' } as const
+const PLATFORM_LABEL = { mac: 'Mac', linux: 'Linux', windows: 'Windows' } as const
+const PLATFORMS = ['mac', 'linux', 'windows'] as const
+type Platform = (typeof PLATFORMS)[number]
+/** The file each platform's app updates itself from. */
+const UPDATE_FILE: Record<Platform, string> = { mac: '.zip', linux: '.AppImage', windows: '.exe' }
+
+/** The platform a build file is for, from its extension; null when it cannot tell. */
+function platformOf(name: string): Platform | null {
+  if (/\.AppImage$/i.test(name)) return 'linux'
+  if (/\.exe$/i.test(name)) return 'windows'
+  if (/\.(zip|dmg)$/i.test(name)) return 'mac'
+  return null
+}
 const ARCH_LABEL: Record<string, string> = {
   arm64: 'Apple silicon (arm64)',
   x64: 'Intel / PC (x64)',
@@ -32,6 +44,7 @@ const KIND_LABEL: Record<ReleaseFile['kind'], string> = {
   zip: 'Update (.zip)',
   dmg: 'Installer (.dmg)',
   appimage: 'App (.AppImage)',
+  exe: 'Installer (.exe)',
 }
 const STATUS_TONE: Record<AppRelease['status'], BadgeTone> = {
   DRAFT: 'neutral',
@@ -79,7 +92,7 @@ export function AppUpdatesPage() {
   })
 
   const list = releases.data ?? []
-  const current = (platform: 'mac' | 'linux') =>
+  const current = (platform: Platform) =>
     list.find((release) => release.platform === platform && release.current)
 
   return (
@@ -89,8 +102,8 @@ export function AppUpdatesPage() {
         description="The desktop app that work-from-home staff punch in from. Upload a new version, then publish it: older apps update before their next punch-in."
       />
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {(['mac', 'linux'] as const).map((platform) => {
+      <div className="grid gap-3 sm:grid-cols-3">
+        {PLATFORMS.map((platform) => {
           const release = current(platform)
           return (
             <Card key={platform} className="px-4 py-3">
@@ -139,7 +152,7 @@ export function AppUpdatesPage() {
                     </Badge>
                     {!release.updatable && release.status === 'DRAFT' && (
                       <span className="text-[12px] text-status-amber">
-                        Needs the {release.platform === 'mac' ? '.zip' : '.AppImage'} before publishing
+                        Needs the {UPDATE_FILE[release.platform]} before publishing
                       </span>
                     )}
                   </div>
@@ -233,7 +246,7 @@ function UploadCard({ onUploaded }: { onUploaded: () => void }) {
   const toast = useToast()
   const fileInput = useRef<HTMLInputElement>(null)
   const [version, setVersion] = useState('')
-  const [platform, setPlatform] = useState<'mac' | 'linux'>('mac')
+  const [platform, setPlatform] = useState<Platform>('mac')
   const [arch, setArch] = useState('')
   const [notes, setNotes] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -247,8 +260,8 @@ function UploadCard({ onUploaded }: { onUploaded: () => void }) {
     // softus-checkin-1.0.1-linux-x86_64.AppImage → 1.0.1; a pre-release keeps its tag (1.1.0-beta.2).
     const found = name.match(/\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)(?:\.?\d+)?)?/i)
     if (found && !version) setVersion(found[0])
-    if (/\.AppImage$/i.test(name)) setPlatform('linux')
-    else if (/\.(zip|dmg)$/i.test(name)) setPlatform('mac')
+    const fromName = platformOf(name)
+    if (fromName) setPlatform(fromName)
   }
 
   const upload = useMutation({
@@ -256,7 +269,8 @@ function UploadCard({ onUploaded }: { onUploaded: () => void }) {
       for (const [index, file] of files.entries()) {
         const form = new FormData()
         form.append('version', version.trim())
-        form.append('platform', platform)
+        // Each file goes to its own platform, so one upload can hold every build of a version.
+        form.append('platform', platformOf(file.name) ?? platform)
         if (arch) form.append('arch', arch)
         if (notes.trim()) form.append('notes', notes.trim())
         form.append('file', file)
@@ -285,7 +299,7 @@ function UploadCard({ onUploaded }: { onUploaded: () => void }) {
     <Card>
       <CardHeader
         title="Upload a version"
-        subtitle="Mac: the .zip (the app updates from it) and the .dmg (first install), for each processor. Linux: the .AppImage."
+        subtitle="Mac: the .zip (the app updates from it) and the .dmg (first install), for each processor. Linux: the .AppImage. Windows: the .exe installer."
       />
       <form
         className="grid gap-4 px-4 pb-4 md:grid-cols-2"
@@ -299,7 +313,7 @@ function UploadCard({ onUploaded }: { onUploaded: () => void }) {
             ref={fileInput}
             type="file"
             multiple
-            accept=".zip,.dmg,.AppImage"
+            accept=".zip,.dmg,.AppImage,.exe"
             onChange={(event) => pick(event.target.files)}
             className="block w-full text-[13px] text-ink-600 file:mr-3 file:rounded-md file:border-0 file:bg-ink-100 file:px-3 file:py-1.5 file:text-ink-800"
             aria-label="Build files"
@@ -309,9 +323,10 @@ function UploadCard({ onUploaded }: { onUploaded: () => void }) {
           <Input value={version} onChange={(event) => setVersion(event.target.value)} placeholder="1.0.1" aria-label="Version" />
         </Field>
         <Field label="Platform">
-          <Select value={platform} onChange={(event) => setPlatform(event.target.value as 'mac' | 'linux')} aria-label="Platform">
+          <Select value={platform} onChange={(event) => setPlatform(event.target.value as Platform)} aria-label="Platform">
             <option value="mac">Mac</option>
             <option value="linux">Linux</option>
+            <option value="windows">Windows</option>
           </Select>
         </Field>
         <Field label="Processor" hint="Read from the file name when left on automatic.">

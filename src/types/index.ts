@@ -709,12 +709,12 @@ export interface ScreenshotDeleteResult {
 /* Desktop app releases                                                        */
 /* -------------------------------------------------------------------------- */
 
-export type ReleasePlatform = 'mac' | 'linux'
+export type ReleasePlatform = 'mac' | 'linux' | 'windows'
 export type ReleaseStatus = 'DRAFT' | 'PUBLISHED' | 'WITHDRAWN'
 
 export interface ReleaseFile {
   arch: string
-  kind: 'zip' | 'dmg' | 'appimage'
+  kind: 'zip' | 'dmg' | 'appimage' | 'exe'
   filename: string
   size_bytes: number
   sha256: string
@@ -740,6 +740,7 @@ export interface AppRelease {
 export interface PublishedVersions {
   mac: string | null
   linux: string | null
+  windows?: string | null
 }
 
 /* -------------------------------------------------------------------------- */

@@ -11,6 +11,8 @@
     "helper": "node scripts/build-helper.mjs",
     "start": "npm run renderer && electron .",
     "dist:mac": "npm run renderer && electron-builder --mac",
+    "dist:win": "npm run renderer && electron-builder --win",
+    "dist:win:docker": "npm run renderer && node scripts/build-win-docker.mjs",
     "dist:linux": "npm run helper && npm run renderer && electron-builder --linux"
   },
   "dependencies": {
@@ -100,6 +102,27 @@
           ]
         }
       ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Softus Checkin",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
     },
     "toolsets": {
       "appimage": "1.0.3"

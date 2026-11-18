@@ -13,6 +13,8 @@
   - macOS: the .zip holds the new "Softus Checkin.app"; it replaces the one
     this app runs from (usually /Applications).
   - Linux: the .AppImage replaces the one this app runs from ($APPIMAGE).
+  - Windows: the installer .exe runs silently for this user, over the
+    installed app, and starts the new version (the way electron-updater does).
 
   Where the app cannot write over itself (installed by another user, run from
   the disk image, a .deb), the download is opened for the person to finish.
@@ -144,6 +146,37 @@ async function installLinux(downloaded) {
   return { ok: true, restart: true }
 }
 
+async function installWindows(downloaded) {
+  // --updated: an update, so the shortcuts are kept as they are; /S: silently;
+  // --force-run: start the new version when done. The installer closes this
+  // app itself if it is still running by the time it gets there.
+  const child = spawn(downloaded, ['--updated', '/S', '--force-run'], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  await new Promise((resolve, reject) => {
+    child.once('spawn', resolve)
+    child.once('error', () => reject(new Error('The installer could not be started.')))
+  })
+  child.unref()
+  return { ok: true, restart: true }
+}
+
+/** Earlier downloads are of no more use once a new one starts. */
+function clearOldDownloads(dir, keep) {
+  for (const name of fs.readdirSync(dir)) {
+    if (name === keep) continue
+    try {
+      fs.rmSync(path.join(dir, name), { recursive: true, force: true })
+    } catch {
+      // An installer still running holds its file; it goes next time.
+    }
+  }
+}
+
+const INSTALLERS = { darwin: installMac, linux: installLinux, win32: installWindows }
+
 /**
  * @param {{url: string, sha256: string, size: number, filename: string, version: string}} file
  * @param {(progress: {stage: string, received: number, total: number}) => void} onProgress
@@ -155,6 +188,7 @@ async function install(file, onProgress) {
   const dir = path.join(app.getPath('temp'), 'softus-checkin-updates')
   fs.mkdirSync(dir, { recursive: true })
   const downloaded = path.join(dir, (file.filename || `update-${file.version}`).replace(SAFE_NAME, '-'))
+  clearOldDownloads(dir, path.basename(downloaded))
   try {
     const result = await download(file, downloaded, onProgress)
     if ((file.size && result.received !== file.size) || result.sha256 !== file.sha256) {
@@ -162,12 +196,10 @@ async function install(file, onProgress) {
       return { ok: false, error: 'The download was damaged. Try again.' }
     }
     onProgress({ stage: 'installing', received: result.received, total: result.received })
-    const outcome =
-      process.platform === 'darwin'
-        ? await installMac(downloaded)
-        : process.platform === 'linux'
-          ? await installLinux(downloaded)
-          : { ok: false, error: 'Updating is not supported on this system yet.' }
+    const installer = INSTALLERS[process.platform]
+    const outcome = installer
+      ? await installer(downloaded)
+      : { ok: false, error: 'Updating is not supported on this system yet.' }
     if (outcome.restart) setTimeout(() => app.exit(0), 300)
     return { ok: outcome.ok, manual: Boolean(outcome.manual), error: outcome.error }
   } catch (error) {
