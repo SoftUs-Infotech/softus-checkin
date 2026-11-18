@@ -40,7 +40,8 @@ import {
   useToast,
   type BadgeTone,
 } from '@/components/ui'
-import type { LeaveBalance, Paginated, Shift, User } from '@/types'
+import type { LeaveBalance, Paginated, PublishedVersions, Shift, User } from '@/types'
+import { AppCell } from './AppCell'
 import { EmployeeDayPunches } from './EmployeeDayPunches'
 
 /* An account status is a real state of the person, so it may borrow the status
@@ -116,6 +117,13 @@ export function EmployeesPage() {
   >(null)
   const queryClient = useQueryClient()
   const toast = useToast()
+
+  // Which desktop app version is current, so an out-of-date app stands out.
+  const published = useQuery({
+    queryKey: ['app-releases', 'published'],
+    queryFn: () => apiGet<PublishedVersions>('/app-releases/published'),
+    staleTime: 60_000,
+  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['employees', search, statusFilter],
@@ -301,6 +309,12 @@ export function EmployeesPage() {
                       <dd className="text-ink-700">{employee.department || '—'}</dd>
                     </div>
                     <div>
+                      <dt className="text-[11px] tracking-wider text-ink-400 uppercase">App</dt>
+                      <dd>
+                        <AppCell employee={employee} published={published.data} />
+                      </dd>
+                    </div>
+                    <div>
                       <dt className="text-[11px] tracking-wider text-ink-400 uppercase">Joined</dt>
                       <dd className="tabular text-ink-700">
                         {employee.joining_date ? formatDate(employee.joining_date) : '—'}
@@ -347,6 +361,7 @@ export function EmployeesPage() {
                   <Th>Shift</Th>
                   <Th>Department</Th>
                   <Th>Status</Th>
+                  <Th>App</Th>
                   <Th className="hidden 2xl:table-cell">Joined</Th>
                   <Th className="text-right">
                     <span className="sr-only">Actions</span>
@@ -405,6 +420,9 @@ export function EmployeesPage() {
                               {employee.status.toLowerCase()}
                             </Badge>
                           </Td>
+                          <Td>
+                            <AppCell employee={employee} published={published.data} />
+                          </Td>
                           <Td className="tabular hidden whitespace-nowrap 2xl:table-cell">
                             {employee.joining_date ? formatDate(employee.joining_date) : '—'}
                           </Td>
@@ -422,7 +440,7 @@ export function EmployeesPage() {
                       </Tr>
                       {expanded && (
                         <tr className="bg-ink-50/70">
-                          <td colSpan={7} className="px-4 pt-1 pb-4">
+                          <td colSpan={8} className="px-4 pt-1 pb-4">
                             <EmployeeDayPunches employee={employee} />
                           </td>
                         </tr>

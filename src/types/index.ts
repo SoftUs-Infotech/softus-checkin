@@ -35,6 +35,19 @@ export interface User {
   can_punch: boolean
   last_login_at?: string | null
   created_at?: string | null
+  /** The desktop app this person last used, if any. */
+  desktop_app?: DesktopAppInfo | null
+  /** When this person last used the website. */
+  web_last_seen_at?: string | null
+}
+
+export interface DesktopAppInfo {
+  version?: string | null
+  /** `darwin` | `linux` | `win32` */
+  os?: string | null
+  arch?: string | null
+  os_version?: string | null
+  last_seen_at?: string | null
 }
 
 export interface TokenPair {
@@ -209,6 +222,8 @@ export interface TodayState {
   screen_capture_required?: boolean
   /** One screenshot at a random moment in every window of this many minutes. */
   screen_capture_interval_minutes?: number
+  /** Works from home and the organisation wants punches from the desktop app. */
+  desktop_app_required?: boolean
 }
 
 export interface MonthSummary {
@@ -477,6 +492,8 @@ export interface OrgSettings {
   fifth_saturday_working?: boolean | null
   comp_off_expiry_days: number
   wfh_screenshot_interval_minutes: number
+  /** Work from home: punch in only from the desktop app. */
+  wfh_desktop_app_required?: boolean
 
   support_email?: string | null
   /** The go-live reset: attendance counts from this day. Null until pressed. */
@@ -686,4 +703,76 @@ export interface ScreenshotDeleteResult {
   deleted: number
   freed_bytes: number
   failed: number
+}
+
+/* -------------------------------------------------------------------------- */
+/* Desktop app releases                                                        */
+/* -------------------------------------------------------------------------- */
+
+export type ReleasePlatform = 'mac' | 'linux'
+export type ReleaseStatus = 'DRAFT' | 'PUBLISHED' | 'WITHDRAWN'
+
+export interface ReleaseFile {
+  arch: string
+  kind: 'zip' | 'dmg' | 'appimage'
+  filename: string
+  size_bytes: number
+  sha256: string
+  uploaded_at: string
+  url: string
+}
+
+export interface AppRelease {
+  id: string
+  version: string
+  platform: ReleasePlatform
+  notes: string
+  status: ReleaseStatus
+  files: ReleaseFile[]
+  created_at: string
+  published_at?: string | null
+  /** Has the file the app updates itself from. */
+  updatable: boolean
+  /** The newest published release of its platform. */
+  current: boolean
+}
+
+export interface PublishedVersions {
+  mac: string | null
+  linux: string | null
+}
+
+/* -------------------------------------------------------------------------- */
+/* Work-from-home activity                                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface ActivityFigures {
+  tracked_minutes: number
+  active_seconds: number
+  keys: number
+  clicks: number
+  scrolls: number
+  mouse_distance: number
+  screen_samples: number
+  screen_changes: number
+  locked_seconds: number
+  virtual_seconds?: number
+}
+
+export type ActivityFlag = 'idle' | 'locked' | 'mouse_only' | 'screen_only' | 'virtual_input'
+
+export interface ActivityWindow extends ActivityFigures {
+  start: string
+  end: string
+  active_percent: number
+  level: 'high' | 'medium' | 'low'
+  flags: ActivityFlag[]
+}
+
+export interface ActivityDay {
+  date: string
+  interval_minutes: number
+  totals: ActivityFigures
+  active_percent: number
+  windows: ActivityWindow[]
 }

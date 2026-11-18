@@ -28,6 +28,7 @@ import { OperationsPage } from '@/features/admin/OperationsPage'
 import { TaskExplorerPage } from '@/features/admin/TaskExplorerPage'
 import { WorkCalendarPage } from '@/features/admin/WorkCalendarPage'
 import { SalaryPage } from '@/features/admin/SalaryPage'
+import { AppUpdatesPage } from '@/features/admin/AppUpdatesPage'
 
 function Booting() {
   return (
@@ -285,6 +286,14 @@ export default function App() {
           element={
             <RequireAdmin>
               <AuditPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="admin/app-updates"
+          element={
+            <RequireAdmin>
+              <AppUpdatesPage />
             </RequireAdmin>
           }
         />

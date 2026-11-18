@@ -19,7 +19,10 @@ import {
   StatTile,
   useToast,
 } from '@/components/ui'
+import { windowFor } from '@/lib/activity'
+import { ActivitySummary, ShotActivity } from './ActivityPanel'
 import type {
+  ActivityDay,
   Screenshot,
   ScreenshotDay,
   ScreenshotDeleteResult,
@@ -96,6 +99,13 @@ export function WorkFromHomePage() {
     queryKey: ['screenshots', 'days', selectedId],
     queryFn: () => apiGet<ScreenshotDay[]>('/screenshots/days', { user_id: selectedId }),
     enabled: Boolean(selectedId),
+  })
+
+  const activity = useQuery({
+    queryKey: ['activity', 'day', selectedId, date],
+    queryFn: () => apiGet<ActivityDay>('/activity/day', { user_id: selectedId, date }),
+    enabled: Boolean(selectedId),
+    refetchInterval: 60_000,
   })
 
   const remove = useMutation({
@@ -320,6 +330,8 @@ export function WorkFromHomePage() {
                 </div>
               )}
 
+              <ActivitySummary day={activity.data} />
+
               <div className="px-5 py-4">
                 {shots.error && <ErrorNote className="mb-3" message={messageOf(shots.error)} />}
                 {shots.isLoading ? (
@@ -375,6 +387,7 @@ export function WorkFromHomePage() {
                           <span>{formatTime(shot.captured_at)}</span>
                           <span className="text-ink-400">{formatBytes(shot.size_bytes)}</span>
                         </p>
+                        <ShotActivity window={windowFor(activity.data, shot)} />
                       </li>
                     ))}
                   </ul>

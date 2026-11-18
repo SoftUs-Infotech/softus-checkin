@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { API_BASE, apiPost, apiUpload, messageOf, readTokens } from '@/lib/api'
+import { desktop, permissionProblem, type ActivityMinute } from '@/lib/desktop'
 import { deviceProfileHeader } from '@/lib/device'
 
 /*
@@ -24,6 +25,11 @@ import { deviceProfileHeader } from '@/lib/device'
   closing or reloading the page, is reported at once and punches the employee
   out. When the page cannot report — a crash, a sleeping laptop — the server
   notices the silence and punches them out at the last check-in.
+
+  In the desktop app none of the browser's sharing applies: the app captures
+  every display itself once macOS has allowed it, counts activity (key presses,
+  clicks, the screen changing — never what was typed), and this module sends
+  that activity along with the 30-second check-in.
 */
 
 export type CaptureStatus = 'idle' | 'starting' | 'active' | 'stopped' | 'denied' | 'unsupported'
@@ -42,6 +48,7 @@ const MAX_WIDTH = 1600
 const JPEG_QUALITY = 0.7
 
 export function captureSupported(): boolean {
+  if (desktop) return true
   return typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getDisplayMedia)
 }
 
@@ -76,9 +83,11 @@ export class CaptureError extends Error {
 
 let stream: MediaStream | null = null
 let video: HTMLVideoElement | null = null
+/** The desktop app is capturing and tracking for this punched-in session. */
+let desktopActive = false
 
 export function captureRunning(): boolean {
-  return Boolean(stream?.active)
+  return desktop ? desktopActive : Boolean(stream?.active)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -91,6 +100,7 @@ export function captureRunning(): boolean {
  */
 export async function startCapture(): Promise<void> {
   if (captureRunning()) return
+  if (desktop) return startDesktop()
   if (!captureSupported()) {
     set({ status: 'unsupported' })
     throw new CaptureError(USE_CHROME_OR_EDGE)
@@ -147,6 +157,25 @@ export async function startCapture(): Promise<void> {
   announce('active')
 }
 
+/** The desktop app: no picker — the permissions, then capture and tracking. */
+async function startDesktop(): Promise<void> {
+  if (!desktop) return
+  set({ status: 'starting', error: null })
+  const problem = permissionProblem(await desktop.permissions())
+  if (problem) {
+    set({ status: 'denied', error: problem })
+    throw new CaptureError(problem)
+  }
+  const started = await desktop.startTracking()
+  if (!started.ok) {
+    set({ status: 'stopped', error: PUNCH_IN_FAILED })
+    throw new CaptureError(PUNCH_IN_FAILED)
+  }
+  desktopActive = true
+  set({ status: 'active', error: null })
+  announce('active')
+}
+
 /** The employee pressed the browser's own "Stop sharing", or the screen went away. */
 function onTrackEnded() {
   teardown()
@@ -169,6 +198,19 @@ function teardown() {
 
 /** End sharing on purpose — at punch-out, or when signing out. */
 export function stopCapture() {
+  if (desktop) {
+    if (!desktopActive) return
+    desktopActive = false
+    stopSchedule()
+    set({ status: 'idle' })
+    announce('stopped')
+    // The minute in progress is closed and sent, so a day's activity ends where the day did.
+    void desktop
+      .stopTracking()
+      .then(flushActivity)
+      .catch(() => undefined)
+    return
+  }
   if (!stream) return
   teardown()
   set({ status: 'idle' })
@@ -199,7 +241,47 @@ async function videoReady(element: HTMLVideoElement): Promise<void> {
   })
 }
 
+/** Every display, side by side as they are arranged, in one picture. */
+async function grabDesktop(): Promise<{ blob: Blob; width: number; height: number }> {
+  if (!desktop || !desktopActive) throw new CaptureError(PUNCH_IN_FAILED)
+  const screens = await desktop.captureScreens(MAX_WIDTH)
+  if (!screens.length) throw new CaptureError(PUNCH_IN_FAILED)
+
+  const left = Math.min(...screens.map((s) => s.x))
+  const top = Math.min(...screens.map((s) => s.y))
+  const right = Math.max(...screens.map((s) => s.x + s.boundsWidth))
+  const bottom = Math.max(...screens.map((s) => s.y + s.boundsHeight))
+  const scale = Math.min(1, MAX_WIDTH / (right - left))
+  const width = Math.max(1, Math.round((right - left) * scale))
+  const height = Math.max(1, Math.round((bottom - top) * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new CaptureError(PUNCH_IN_FAILED)
+  context.fillStyle = '#000'
+  context.fillRect(0, 0, width, height)
+  for (const screen of screens) {
+    const bitmap = await createImageBitmap(new Blob([screen.data], { type: 'image/jpeg' }))
+    context.drawImage(
+      bitmap,
+      Math.round((screen.x - left) * scale),
+      Math.round((screen.y - top) * scale),
+      Math.round(screen.boundsWidth * scale),
+      Math.round(screen.boundsHeight * scale),
+    )
+    bitmap.close()
+  }
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY),
+  )
+  if (!blob) throw new CaptureError(PUNCH_IN_FAILED)
+  return { blob, width, height }
+}
+
 async function grab(): Promise<{ blob: Blob; width: number; height: number }> {
+  if (desktop) return grabDesktop()
   const track = stream?.getVideoTracks()[0]
   if (!track || track.readyState !== 'live') {
     throw new CaptureError(PUNCH_IN_FAILED)
@@ -280,6 +362,30 @@ const HEARTBEAT_MS = 30_000
 function sendHeartbeat() {
   // A missed beat is not an error worth showing: the server allows for a few.
   if (captureRunning()) apiPost('/screenshots/heartbeat').catch(() => undefined)
+  if (desktop) void flushActivity()
+}
+
+/* Minutes the app measured, waiting to reach the server. Kept through a lost
+   connection (up to two days of them) and sent with the next check-in. */
+let unsentActivity: ActivityMinute[] = []
+let flushing = false
+const MAX_UNSENT = 2880
+
+async function flushActivity(): Promise<void> {
+  if (!desktop || flushing) return
+  flushing = true
+  try {
+    unsentActivity.push(...(await desktop.takeActivity()))
+    while (unsentActivity.length) {
+      const batch = unsentActivity.slice(0, 720)
+      await apiPost('/activity', { minutes: batch })
+      unsentActivity = unsentActivity.slice(batch.length)
+    }
+  } catch {
+    unsentActivity = unsentActivity.slice(-MAX_UNSENT)
+  } finally {
+    flushing = false
+  }
 }
 
 /**
@@ -293,7 +399,9 @@ export function runSchedule(minutes: number) {
   stopSchedule()
   scheduling = true
   windowMs = next
-  windowStart = Date.now()
+  // Windows line up with the clock (10:00, 10:10, …), which is how the admin
+  // page groups activity: one screenshot falls in every window.
+  windowStart = Math.floor(Date.now() / windowMs) * windowMs
   scheduleNext()
   sendHeartbeat()
   heartbeatTimer = window.setInterval(sendHeartbeat, HEARTBEAT_MS)
@@ -336,9 +444,23 @@ if (typeof window !== 'undefined') {
   })
 }
 
+/*
+  The desktop app's window is closing while punched in: like a closed tab, that
+  ends the working session. The app waits for this before it quits.
+*/
+if (desktop) {
+  desktop.onClosing(async () => {
+    if (!desktopActive) return
+    await flushActivity()
+    if (scheduling) await reportStopped().catch(() => undefined)
+  })
+}
+
 function scheduleNext() {
-  const at = windowStart + Math.random() * windowMs
-  timer = window.setTimeout(fire, Math.max(0, at - Date.now()))
+  const now = Date.now()
+  const from = Math.max(now, windowStart)
+  const at = from + Math.random() * Math.max(0, windowStart + windowMs - from)
+  timer = window.setTimeout(fire, Math.max(0, at - now))
 }
 
 async function fire() {
@@ -346,7 +468,7 @@ async function fire() {
   windowStart += windowMs
   // After a sleeping laptop wakes up, take one screenshot and carry on from
   // now — not a burst for every window that passed while it slept.
-  if (windowStart + windowMs < Date.now()) windowStart = Date.now()
+  if (windowStart + windowMs < Date.now()) windowStart = Math.floor(Date.now() / windowMs) * windowMs
 
   try {
     const stillWorking = shotGuard ? await shotGuard() : true

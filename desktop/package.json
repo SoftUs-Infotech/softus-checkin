@@ -1,0 +1,108 @@
+{
+  "name": "softus-checkin-desktop",
+  "productName": "Softus Checkin",
+  "version": "1.0.0",
+  "description": "Softus Checkin desktop app for work-from-home attendance",
+  "author": "SoftUs Infotech",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "renderer": "node scripts/build-renderer.mjs",
+    "helper": "node scripts/build-helper.mjs",
+    "start": "npm run renderer && electron .",
+    "dist:mac": "npm run renderer && electron-builder --mac",
+    "dist:linux": "npm run helper && npm run renderer && electron-builder --linux"
+  },
+  "dependencies": {
+    "dbus-next": "0.10.2",
+    "uiohook-napi": "1.5.5"
+  },
+  "devDependencies": {
+    "electron": "45.2.3",
+    "electron-builder": "26.18.1"
+  },
+  "build": {
+    "appId": "com.softusinfotech.checkin",
+    "productName": "Softus Checkin",
+    "artifactName": "softus-checkin-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**",
+      "renderer/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/uiohook-napi/**"
+    ],
+    "npmRebuild": false,
+    "afterPack": "scripts/after-pack.cjs",
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "icon": "build/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSLocationUsageDescription": "Softus Checkin records where each punch happens.",
+        "NSLocationWhenInUseUsageDescription": "Softus Checkin records where each punch happens.",
+        "NSScreenCaptureUsageDescription": "Softus Checkin needs this to record attendance."
+      }
+    },
+    "dmg": {
+      "title": "Softus Checkin ${version}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Office",
+      "icon": "build/icon.png",
+      "executableName": "softus-checkin",
+      "synopsis": "Attendance for work-from-home staff",
+      "extraResources": [
+        {
+          "from": "build/helper",
+          "to": "helper",
+          "filter": [
+            "softus-checkin-helper-*"
+          ]
+        },
+        {
+          "from": "linux",
+          "to": "linux",
+          "filter": [
+            "setup.sh",
+            "softus-checkin-helper.service"
+          ]
+        }
+      ]
+    },
+    "toolsets": {
+      "appimage": "1.0.3"
+    }
+  }
+}

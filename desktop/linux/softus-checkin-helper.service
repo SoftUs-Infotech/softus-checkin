@@ -1,0 +1,33 @@
+[Unit]
+Description=Softus Checkin activity helper (counts keyboard and mouse use; never records which keys)
+Documentation=https://softus-checkin.vercel.app
+After=systemd-udevd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/softus-checkin/softus-checkin-helper
+Restart=always
+RestartSec=2
+RuntimeDirectory=softus-checkin
+RuntimeDirectoryMode=0755
+
+# It only reads input devices and writes one socket: lock everything else away.
+DevicePolicy=closed
+DeviceAllow=char-input r
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

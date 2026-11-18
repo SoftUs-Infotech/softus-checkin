@@ -13,6 +13,7 @@ import {
   LogOut,
   Megaphone,
   Menu,
+  MonitorDown,
   Palmtree,
   ScrollText,
   Settings,
@@ -27,6 +28,7 @@ import { cn } from '@/lib/cn'
 import { orgNowParts, orgTimeZoneName, setOrgTimeZone } from '@/lib/format'
 import { useAuth } from '@/store/auth'
 import { ScreenCaptureManager } from '@/features/wfh/ScreenCaptureManager'
+import { UpdatePrompt } from '@/features/desktop/UpdatePrompt'
 import { NotificationPanel } from './NotificationPanel'
 
 interface NavItem {
@@ -74,6 +76,7 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/work-calendar', label: 'Work calendar', icon: CalendarRange },
   { to: '/admin/salary', label: 'Salary', icon: Wallet },
   { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },
+  { to: '/admin/app-updates', label: 'App updates', icon: MonitorDown },
   { to: '/admin/audit', label: 'Audit trail', icon: ScrollText },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ]
@@ -285,6 +288,7 @@ export function AppShell() {
             {/* Working from home: keeps screen capture going on every page, and
                 asks for it back if it stops mid-day. Renders nothing otherwise. */}
             {hasPersonalSpace() && <ScreenCaptureManager />}
+            <UpdatePrompt />
             <Outlet />
           </div>
         </main>

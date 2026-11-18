@@ -65,6 +65,7 @@ const schema = z.object({
   comp_off_expiry_days: z.coerce.number().int().min(0).max(730),
 
   wfh_screenshot_interval_minutes: z.coerce.number().int().min(5, 'At least 5 minutes.').max(60, 'At most 60 minutes.'),
+  wfh_desktop_app_required: z.boolean(),
 })
 
 /** `"1, 3"` → `[1, 3]`, ignoring anything that is not a Saturday number. */
@@ -137,6 +138,7 @@ export function SettingsPage() {
                 : 'OFF',
           comp_off_expiry_days: data.comp_off_expiry_days,
           wfh_screenshot_interval_minutes: data.wfh_screenshot_interval_minutes ?? 10,
+          wfh_desktop_app_required: data.wfh_desktop_app_required ?? false,
         }
       : undefined,
   })
@@ -350,6 +352,11 @@ export function SettingsPage() {
                 label="Block punching from phones and tablets"
                 hint="Attendance is a desk activity. Turning this off allows any device."
                 {...register('block_mobile_punch')}
+              />
+              <Toggle
+                label="Work from home: punch in only from the desktop app"
+                hint="The desktop app also records activity. Turn this on once everybody working from home has installed it — until then they punch in from the website as before."
+                {...register('wfh_desktop_app_required')}
               />
               <Toggle
                 label="Require location on every punch"

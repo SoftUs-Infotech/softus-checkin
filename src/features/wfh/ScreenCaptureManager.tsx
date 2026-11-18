@@ -13,6 +13,7 @@ import {
   stopSchedule,
   useScreenCapture,
 } from '@/lib/screenCapture'
+import { UpdateRequiredError } from '@/lib/updates'
 import { useAuth } from '@/store/auth'
 import { Button, ErrorNote, Modal, useToast } from '@/components/ui'
 import type { TodayState } from '@/types'
@@ -185,7 +186,7 @@ export function ScreenCaptureManager() {
       >
         <div className="space-y-3 text-[13px] text-ink-600">
           <p>Please punch in again to continue.</p>
-          {resume.error && (
+          {resume.error && !(resume.error instanceof UpdateRequiredError) && (
             <ErrorNote message={messageOf(resume.error, 'You were not punched in.')} />
           )}
         </div>

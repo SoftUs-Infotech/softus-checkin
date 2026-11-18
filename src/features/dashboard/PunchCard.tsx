@@ -7,6 +7,10 @@ import { looksLikeAComputer } from '@/lib/device'
 import { punch as punchNow } from '@/lib/punch'
 import { formatMinutes, formatTime } from '@/lib/format'
 import { cn } from '@/lib/cn'
+import { isDesktop } from '@/lib/desktop'
+import { UpdateRequiredError } from '@/lib/updates'
+import { DesktopAppDownload } from '@/features/desktop/DesktopAppDownload'
+import { PermissionsPanel } from '@/features/desktop/PermissionsPanel'
 import { Badge, Card, ErrorNote, Skeleton, useToast, type BadgeTone } from '@/components/ui'
 import type { TodayState } from '@/types'
 import { PunchDial } from './PunchDial'
@@ -72,6 +76,8 @@ export function PunchCard() {
       toast.success(action === 'punch-in' ? 'Punched in' : 'Punched out')
     },
     onError: (mutationError) => {
+      // The update prompt is already on screen and says what to do.
+      if (mutationError instanceof UpdateRequiredError) return
       const message = messageOf(mutationError, 'Your punch was not recorded.')
       // The note stays on the card; the toast is only so the failure is not
       // missed by somebody whose eyes were on the dial.
@@ -222,6 +228,12 @@ export function PunchCard() {
             body="Your punches are still being recorded and counted as normal. Ask your administrator to assign a shift so the day gets an expected start, end and total."
           />
         )}
+
+        {/* The app needs macOS's permissions before it can punch in. */}
+        {isDesktop && data.screen_capture_required && <PermissionsPanel />}
+
+        {/* The website, for somebody who has to punch in from the app. */}
+        {!isDesktop && data.desktop_app_required && <DesktopAppDownload />}
 
         {data.geolocation_required && (
           <p className="flex items-center gap-2 text-[12px] text-ink-400">

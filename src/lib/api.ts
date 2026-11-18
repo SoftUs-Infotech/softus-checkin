@@ -4,6 +4,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios'
 import { resetCache } from '@/lib/queryClient'
+import { desktop } from './desktop'
 import { deviceProfileHeader } from './device'
 
 /**
@@ -87,6 +88,14 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   // Sent on every request so the server can classify the device on the two
   // routes that care, without the client having to know which those are.
   config.headers.set('X-Device-Profile', deviceProfileHeader())
+  // The desktop app says so, and which build it is: the admin sees the version
+  // per person, and an outdated app is asked to update before punching in.
+  if (desktop) {
+    config.headers.set('X-Client', 'desktop')
+    config.headers.set('X-App-Version', desktop.version)
+    config.headers.set('X-App-Platform', `${desktop.platform}-${desktop.arch}`)
+    config.headers.set('X-OS-Version', desktop.osVersion)
+  }
   return config
 })
 
