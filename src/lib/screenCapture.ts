@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { API_BASE, apiPost, apiUpload, messageOf, readTokens } from '@/lib/api'
-import { desktop, permissionProblem, type ActivityMinute } from '@/lib/desktop'
+import { flushLog, logEvent, watchSettings } from '@/lib/appLog'
+import { problemNotice, useCaptureProblem, type CaptureProblemReason } from '@/lib/captureProblem'
+import { desktop, permissionProblem, type ActivityMinute, type CaptureHealth } from '@/lib/desktop'
 import { deviceProfileHeader } from '@/lib/device'
 
 /*
@@ -41,6 +43,8 @@ interface CaptureState {
   error: string | null
   /** Another tab of the app holds the shared screen, so this one need not. */
   elsewhere: boolean
+  /** When the desktop app last punched out because it lost the screen. */
+  lostAt: number
 }
 
 /** Captures are scaled down to this width: plenty to read a screen, a fraction of the bytes. */
@@ -57,6 +61,7 @@ export const useScreenCapture = create<CaptureState>(() => ({
   lastShotAt: null,
   error: null,
   elsewhere: false,
+  lostAt: 0,
 }))
 
 const set = useScreenCapture.setState
@@ -241,11 +246,25 @@ async function videoReady(element: HTMLVideoElement): Promise<void> {
   })
 }
 
+/** A screenshot the app could not take, for the administrator's app log. */
+function shotFailed(error: string) {
+  logEvent('SCREENSHOT_FAILED', { error })
+}
+
 /** Every display, side by side as they are arranged, in one picture. */
 async function grabDesktop(): Promise<{ blob: Blob; width: number; height: number }> {
   if (!desktop || !desktopActive) throw new CaptureError(PUNCH_IN_FAILED)
-  const screens = await desktop.captureScreens(MAX_WIDTH)
-  if (!screens.length) throw new CaptureError(PUNCH_IN_FAILED)
+  let screens: Awaited<ReturnType<typeof desktop.captureScreens>>
+  try {
+    screens = await desktop.captureScreens(MAX_WIDTH)
+  } catch (error) {
+    shotFailed(messageOf(error, 'the screen did not answer'))
+    throw new CaptureError(PUNCH_IN_FAILED)
+  }
+  if (!screens.length) {
+    shotFailed('no picture of the screen came back')
+    throw new CaptureError(PUNCH_IN_FAILED)
+  }
 
   const left = Math.min(...screens.map((s) => s.x))
   const top = Math.min(...screens.map((s) => s.y))
@@ -362,7 +381,70 @@ const HEARTBEAT_MS = 30_000
 function sendHeartbeat() {
   // A missed beat is not an error worth showing: the server allows for a few.
   if (captureRunning()) apiPost('/screenshots/heartbeat').catch(() => undefined)
-  if (desktop) void flushActivity()
+  if (desktop) {
+    void flushActivity()
+    void flushLog()
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* The desktop app watching that it can still see the screen                   */
+/* -------------------------------------------------------------------------- */
+/*
+  Every 15 seconds while punched in. On macOS, Screen Recording or
+  Accessibility turned off ends the session at once; anywhere, a screen the
+  app has not been able to see for a minute while the person was at the
+  computer (not locked, not away, not asleep) ends it too. Either way the
+  session ends at the last moment the screen was seen, the window comes to the
+  front, and the popup asks for the setting — nothing more.
+*/
+const WATCH_EVERY_MS = 15_000
+const UNSEEN_LIMIT_MS = 60_000
+let watchTimer: number | null = null
+let losing = false
+
+async function watchDesktop(): Promise<void> {
+  if (!desktop?.captureHealth || !desktopActive || losing) return
+  const health = await desktop.captureHealth().catch(() => null)
+  if (!health?.running || !desktopActive) return
+  if (desktop.platform === 'darwin' && health.screen !== 'granted') {
+    return captureLost('SETTING_OFF', health, 'screen')
+  }
+  if (desktop.platform === 'darwin' && health.input !== 'granted') {
+    return captureLost('SETTING_OFF', health, 'input')
+  }
+  if (health.unseenMs >= UNSEEN_LIMIT_MS) return captureLost('SCREEN_NOT_VISIBLE', health)
+}
+
+async function captureLost(
+  reason: CaptureProblemReason,
+  health: CaptureHealth,
+  setting?: 'screen' | 'input',
+): Promise<void> {
+  if (!desktop || losing) return
+  losing = true
+  try {
+    // The log says what changed before it says what was done about it.
+    if (reason === 'SETTING_OFF') await watchSettings().catch(() => undefined)
+    if (reason === 'SCREEN_NOT_VISIBLE') {
+      logEvent('SCREEN_NOT_VISIBLE', {
+        seconds: Math.round(health.unseenMs / 1000),
+        reported: health.screen === 'granted' ? 'on' : 'off',
+      })
+    }
+    void desktop.reportCaptureLost?.()
+    try {
+      await reportStopped({ reason, at: health.lastSeenAt ?? new Date().toISOString(), setting })
+    } catch {
+      // The capture manager says so again, and the server notices the silence.
+    }
+    stopCapture()
+    set({ lostAt: Date.now() })
+    useCaptureProblem.getState().show({ reason, punchedOut: true })
+    void desktop.attention?.({ title: 'Softus Checkin', body: problemNotice(desktop.platform) })
+  } finally {
+    losing = false
+  }
 }
 
 /* Minutes the app measured, waiting to reach the server. Kept through a lost
@@ -405,6 +487,7 @@ export function runSchedule(minutes: number) {
   scheduleNext()
   sendHeartbeat()
   heartbeatTimer = window.setInterval(sendHeartbeat, HEARTBEAT_MS)
+  if (desktop) watchTimer = window.setInterval(() => void watchDesktop(), WATCH_EVERY_MS)
 }
 
 export function stopSchedule() {
@@ -413,11 +496,21 @@ export function stopSchedule() {
   timer = null
   if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer)
   heartbeatTimer = null
+  if (watchTimer !== null) window.clearInterval(watchTimer)
+  watchTimer = null
+}
+
+/** Why the screen went, as the server takes it. */
+export interface StoppedReport {
+  reason: 'SETTING_OFF' | 'SCREEN_NOT_VISIBLE' | 'APP_CLOSED' | 'SHARING_STOPPED'
+  /** The last moment the screen was visible; the session ends there. */
+  at?: string
+  setting?: 'screen' | 'input'
 }
 
 /** Sharing stopped while punched in: the server punches the employee out. */
-export function reportStopped(): Promise<unknown> {
-  return apiPost('/screenshots/stopped')
+export function reportStopped(report?: StoppedReport): Promise<unknown> {
+  return apiPost('/screenshots/stopped', report)
 }
 
 /*
@@ -452,7 +545,7 @@ if (desktop) {
   desktop.onClosing(async () => {
     if (!desktopActive) return
     await flushActivity()
-    if (scheduling) await reportStopped().catch(() => undefined)
+    if (scheduling) await reportStopped({ reason: 'APP_CLOSED' }).catch(() => undefined)
   })
 }
 
@@ -474,6 +567,8 @@ async function fire() {
     const stillWorking = shotGuard ? await shotGuard() : true
     if (stillWorking && captureRunning()) await captureNow()
   } catch (error) {
+    // Not being able to take it is logged where it happened; this is sending.
+    if (desktop && !(error instanceof CaptureError)) shotFailed(messageOf(error, 'it could not be sent'))
     set({ error: messageOf(error, 'A screenshot could not be sent.') })
   }
   if (scheduling && captureRunning()) scheduleNext()

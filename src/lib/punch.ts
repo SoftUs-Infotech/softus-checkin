@@ -1,4 +1,5 @@
 import { ApiError, apiPost } from '@/lib/api'
+import { useCaptureProblem } from '@/lib/captureProblem'
 import { desktop } from '@/lib/desktop'
 import { currentPosition } from '@/lib/location'
 import {
@@ -49,6 +50,13 @@ export async function punch(
       await captureNow()
     } catch (error) {
       stopCapture()
+      // The app could not see the screen: on macOS that takes a restart, and
+      // the popup says which setting to allow. (A missing permission is shown
+      // by the punch card's own checklist instead.)
+      if (desktop && error instanceof CaptureError && error.message === PUNCH_IN_FAILED) {
+        void desktop.reportCaptureLost?.()
+        useCaptureProblem.getState().show({ reason: 'SCREEN_NOT_VISIBLE', punchedOut: false })
+      }
       // CaptureError messages are already neutral; anything else (an upload
       // the server refused) would name screenshots, so it is replaced.
       throw error instanceof CaptureError ? error : new Error(PUNCH_IN_FAILED)

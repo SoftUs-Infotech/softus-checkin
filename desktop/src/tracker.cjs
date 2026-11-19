@@ -41,6 +41,20 @@ let lastPointer = null
 let locked = false
 let previousFingerprint = null
 
+/*
+  Whether the app can still see the screen. Every 15-second look that comes back
+  with a picture moves `lastSeenAt` on. Time the person could not be expected
+  to be seen is excused (`excusedAt`): the screen locked, nobody at the
+  computer for two minutes, or the computer asleep. `health()` reports how long
+  the screen has gone unseen otherwise — the screens punch out after a minute.
+*/
+const AWAY_SECONDS = 120
+let lastSeenAt = 0
+let excusedAt = 0
+let excusedBy = null // why the last excused second was: locked | away | asleep
+let lastTickAt = 0
+let looking = false
+
 function bucketFor(now) {
   const start = Math.floor(now / 60_000) * 60_000
   if (!current || current.start !== start) {
@@ -143,32 +157,72 @@ async function isLocked() {
 
 async function everySecond() {
   const now = Date.now()
+  // A long gap between ticks: the computer was asleep.
+  if (lastTickAt && now - lastTickAt > 5000) {
+    excusedAt = now
+    excusedBy = 'asleep'
+  }
+  lastTickAt = now
   locked = await isLocked()
   if (!running) return
   const bucket = bucketFor(now)
   if (locked) {
+    excusedAt = now
+    excusedBy = 'locked'
     bucket.locked += 1
     return
   }
-  if (source !== 'hook') return // the helper reports active seconds itself
-  let idleSeconds = 1
+  let idleSeconds = null
   try {
     idleSeconds = powerMonitor.getSystemIdleTime()
   } catch {
     // Fall back to the input hook alone.
   }
-  if (idleSeconds < 1 || now - lastInputAt < 1500) bucket.active += 1
+  // Away: no keyboard or mouse for two minutes. The system's own idle time
+  // says so on macOS, Windows and Xorg; on Wayland it is always 0, so the
+  // input the activity helper counted decides there.
+  const wayland = linux && session.sessionType() === 'wayland'
+  const idleFor = wayland || idleSeconds === null ? (now - lastInputAt) / 1000 : idleSeconds
+  if (idleFor >= AWAY_SECONDS) {
+    excusedAt = now
+    excusedBy = 'away'
+  }
+  if (source !== 'hook') return // the helper reports active seconds itself
+  if ((idleSeconds ?? 1) < 1 || now - lastInputAt < 1500) bucket.active += 1
 }
 async function sampleScreen() {
+  // A look still waiting (a hung request) is not joined by another.
+  if (looking) return
+  looking = true
   try {
     const next = await capture.fingerprint()
     if (!running || !next) return
-    const bucket = bucketFor(Date.now())
+    lastSeenAt = Date.now()
+    const bucket = bucketFor(lastSeenAt)
     bucket.samples += 1
     if (previousFingerprint && capture.changed(previousFingerprint, next)) bucket.changes += 1
     previousFingerprint = next
   } catch {
-    // A missed sample only means one fewer comparison.
+    // Not seen this time; health() counts how long that lasts.
+  } finally {
+    looking = false
+  }
+}
+
+const onWake = () => {
+  excusedAt = Date.now()
+  excusedBy = 'asleep'
+}
+
+/** How long the screen has gone unseen while the person was there to be seen. */
+function health() {
+  const now = Date.now()
+  if (!running) return { running: false, unseenMs: 0, lastSeenAt: null }
+  return {
+    running: true,
+    unseenMs: Math.max(0, now - Math.max(lastSeenAt, excusedAt)),
+    lastSeenAt: new Date(lastSeenAt).toISOString(),
+    excusedBy: excusedAt > lastSeenAt ? excusedBy : null,
   }
 }
 
@@ -203,8 +257,13 @@ async function start({ interactive = true } = {}) {
   running = true
   lastPointer = null
   previousFingerprint = null
+  lastSeenAt = Date.now()
+  excusedAt = 0
+  lastTickAt = 0
   powerMonitor.on('lock-screen', onLockEvent)
   powerMonitor.on('unlock-screen', onUnlockEvent)
+  powerMonitor.on('resume', onWake)
+  powerMonitor.on('unlock-screen', onWake)
   bucketFor(Date.now())
   secondTimer = setInterval(() => void everySecond(), 1000)
   sampleTimer = setInterval(() => void sampleScreen(), SAMPLE_EVERY_MS)
@@ -235,6 +294,8 @@ async function stop() {
   secondTimer = sampleTimer = null
   powerMonitor.removeListener('lock-screen', onLockEvent)
   powerMonitor.removeListener('unlock-screen', onUnlockEvent)
+  powerMonitor.removeListener('resume', onWake)
+  powerMonitor.removeListener('unlock-screen', onWake)
   stopInput()
   await capture.end()
   // The minute in progress ends here, so the day's activity ends where the day did.
@@ -254,4 +315,4 @@ function isRunning() {
   return running
 }
 
-module.exports = { start, stop, take, isRunning }
+module.exports = { start, stop, take, isRunning, health }

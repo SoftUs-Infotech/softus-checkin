@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { LogIn } from 'lucide-react'
 import { apiGet, messageOf } from '@/lib/api'
-import { formatTime } from '@/lib/format'
+import { formatTime, parseInstant } from '@/lib/format'
 import { punch, SCREEN_SHARE_STOPPED } from '@/lib/punch'
 import {
   captureRunning,
@@ -13,6 +13,9 @@ import {
   stopSchedule,
   useScreenCapture,
 } from '@/lib/screenCapture'
+import { logAppOpened, watchSettings } from '@/lib/appLog'
+import { useCaptureProblem } from '@/lib/captureProblem'
+import { desktop } from '@/lib/desktop'
 import { UpdateRequiredError } from '@/lib/updates'
 import { useAuth } from '@/store/auth'
 import { Button, ErrorNote, Modal, useToast } from '@/components/ui'
@@ -59,8 +62,10 @@ export function ScreenCaptureManager() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const workMode = useAuth((state) => state.user?.work_mode)
-  const { status, elsewhere } = useScreenCapture()
+  const { status, elsewhere, lostAt } = useScreenCapture()
   const [dismissed, setDismissed] = useState<string | null>(readDismissed)
+  const problemOpen = useCaptureProblem((state) => state.open)
+  const problemClosedAt = useCaptureProblem((state) => state.closedAt)
 
   /* The account's mode of work can change mid-session; capture having been
      started by the punch card is reason enough to watch, too. */
@@ -111,6 +116,21 @@ export function ScreenCaptureManager() {
   // Signing out unmounts the shell; sharing must not outlive the session.
   useEffect(() => () => stopCapture(), [])
 
+  // The desktop app punched out because it lost the screen: show it at once.
+  useEffect(() => {
+    if (lostAt) refresh()
+  }, [lostAt, refresh])
+
+  // The app log (administrators only): the app opening, and the macOS settings
+  // as they are now and whenever they change.
+  useEffect(() => {
+    if (!desktop || workMode !== 'WFH') return
+    logAppOpened()
+    void watchSettings()
+    const timer = window.setInterval(() => void watchSettings(), 30_000)
+    return () => window.clearInterval(timer)
+  }, [workMode])
+
   /* ---- sharing stopped while punched in: punch out ---------------------- */
   const lost = required && working && status !== 'active' && status !== 'starting' && !elsewhere
   const reporting = useRef(false)
@@ -142,8 +162,18 @@ export function ScreenCaptureManager() {
     !working && lastSession?.closed_reason === SCREEN_SHARE_STOPPED
       ? (lastSession.punch_out?.at ?? null)
       : null
+  // The desktop app's "Please allow this setting" popup already stood for a
+  // punch-out made before it was closed, so this one does not follow it (after
+  // a restart of the app it does: then punching in again is what is left).
+  const answeredByProblem =
+    stoppedAt !== null && problemClosedAt > 0 && parseInstant(stoppedAt).getTime() <= problemClosedAt
   const prompting =
-    required && stoppedAt !== null && stoppedAt !== dismissed && Boolean(today?.can_punch_in)
+    required &&
+    !problemOpen &&
+    !answeredByProblem &&
+    stoppedAt !== null &&
+    stoppedAt !== dismissed &&
+    Boolean(today?.can_punch_in)
 
   const resume = useMutation({
     mutationFn: () => punch('punch-in', today),

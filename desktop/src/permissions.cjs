@@ -31,6 +31,13 @@ const PANES = {
 // Read once at start: a Screen Recording permission granted after this needs a restart.
 const screenAtStart = process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'granted'
 let accessibilityPrompted = false
+// Screen access was lost while the app was running (the setting turned off, or
+// the screen could not be seen): macOS gives it back only after a restart.
+let screenLostSinceStart = false
+
+function markScreenLost() {
+  if (process.platform === 'darwin') screenLostSinceStart = true
+}
 
 async function linuxStatus() {
   const type = session.sessionType()
@@ -56,11 +63,12 @@ async function status() {
   if (process.platform === 'darwin') {
     const screen = systemPreferences.getMediaAccessStatus('screen')
     const input = systemPreferences.isTrustedAccessibilityClient(false) ? 'granted' : 'denied'
+    if (screen !== 'granted' && screenAtStart === 'granted') screenLostSinceStart = true
     return {
       screen,
       input,
       session: 'ok',
-      restartNeeded: screen === 'granted' && screenAtStart !== 'granted',
+      restartNeeded: screen === 'granted' && (screenAtStart !== 'granted' || screenLostSinceStart),
       setup: 'ok',
     }
   }
@@ -114,4 +122,4 @@ async function allGranted() {
   return now.screen === 'granted' && now.input === 'granted' && !now.restartNeeded && now.setup !== 'needed'
 }
 
-module.exports = { status, request, openSettings, allGranted }
+module.exports = { status, request, openSettings, allGranted, markScreenLost }

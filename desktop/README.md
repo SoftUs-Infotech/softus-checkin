@@ -166,6 +166,29 @@ VITE_API_BASE=https://other-server/api/v1 npm run dist:mac
 **Withdraw** takes a published version back; the one before it becomes current
 again. Only drafts and withdrawn versions can be deleted.
 
+## When the app loses the screen
+
+While someone working from home is punched in, the app checks every 15 seconds
+that it can still see the screen:
+
+- **macOS:** Screen Recording (Screen & System Audio Recording on macOS 15+) or
+  Accessibility turned off ends the session at once.
+- **Everywhere:** a screen the app has not been able to see for a minute ends
+  it, unless the screen was locked, nobody touched the computer for two
+  minutes, or it was asleep. A look at the screen that hangs counts as unseen
+  after 10 seconds.
+
+The session ends at the last moment the screen was seen. The window comes to
+the front with a system notification, and the popup says only "Please allow
+this setting" (Windows: "Please punch in again"), with the setting and a
+Restart button. On macOS the app has to restart before it can see the screen
+again, so punching in waits for that.
+
+The server backs this up whatever the app does: no screenshot for 2 intervals
++ 5 minutes ends the session at the last screenshot (locked minutes excepted).
+Everything is written to the **app log**, which admins see on the Work from
+home page under the person's day.
+
 ## Running it while developing
 
 ```bash
@@ -177,6 +200,8 @@ The backend has to allow the app's address: add `app://softus` to
 `CORS_ORIGINS`. `SOFTUS_DEVTOOLS=1` opens the developer tools;
 `SOFTUS_USER_DATA=/some/folder` keeps a separate sign-in and
 `SOFTUS_HELPER_SOCKET=/some/path` points at another helper (both used by the tests).
+`SOFTUS_TEST_BLIND_FILE=/some/file` makes the app see no screen while that
+file exists, to test losing the screen (it can only end a session).
 
 If the app starts as plain Node with `TypeError: Cannot read properties of
 undefined`, the shell has `ELECTRON_RUN_AS_NODE` set (VS Code's terminal does):

@@ -12,7 +12,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
-const { app, BrowserWindow, ipcMain, Menu, net, protocol, session, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, net, Notification, protocol, session, shell } = require('electron')
 const capture = require('./capture.cjs')
 const permissions = require('./permissions.cjs')
 const tracker = require('./tracker.cjs')
@@ -219,6 +219,39 @@ function registerBridge() {
       : { ok: false, error: 'Permissions are missing.' },
   )
   handle('tracking:stop', () => tracker.stop())
+  // How long the screen has gone unseen, with the permissions as macOS reports them now.
+  handle('capture:health', async () => {
+    const now = await permissions.status()
+    return { ...tracker.health(), screen: now.screen, input: now.input }
+  })
+  // The screens punched out because the screen was lost: on macOS the app has
+  // to restart before it can see the screen again.
+  handle('capture:lost', () => permissions.markScreenLost())
+  // Something the person has to act on: the window to the front, and a system
+  // notification for when it is hidden behind other windows or minimised.
+  handle('app:attention', (_event, message) => {
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+    }
+    if (process.platform === 'darwin') {
+      app.focus({ steal: true })
+      app.dock?.bounce('critical')
+    }
+    const title = String((message && message.title) || 'Softus Checkin').slice(0, 80)
+    const body = String((message && message.body) || '').slice(0, 200)
+    if (body && Notification.isSupported()) {
+      const notice = new Notification({ title, body })
+      notice.on('click', () => {
+        if (win && !win.isDestroyed()) {
+          win.show()
+          win.focus()
+        }
+      })
+      notice.show()
+    }
+  })
   handle('setup:run', async (event) => {
     if (!setup) return { ok: true, output: '' }
     const result = await setup.run({

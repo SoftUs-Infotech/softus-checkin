@@ -65,6 +65,18 @@ export interface UpdateFile {
   version: string
 }
 
+/** Whether the app can still see the screen while punched in. */
+export interface CaptureHealth {
+  running: boolean
+  /** How long the screen has gone unseen while the person was there to be seen. */
+  unseenMs: number
+  /** The last moment it was seen. */
+  lastSeenAt: string | null
+  /** The permissions as the operating system reports them now (macOS). */
+  screen: PermissionState
+  input: PermissionState
+}
+
 export interface DesktopBridge {
   version: string
   platform: 'darwin' | 'linux' | 'win32'
@@ -78,6 +90,11 @@ export interface DesktopBridge {
   startTracking(): Promise<{ ok: boolean; error?: string }>
   stopTracking(): Promise<void>
   takeActivity(): Promise<ActivityMinute[]>
+  captureHealth?(): Promise<CaptureHealth>
+  /** The screen was lost: on macOS the app must restart to see it again. */
+  reportCaptureLost?(): Promise<void>
+  /** Bring the window to the front and show a system notification. */
+  attention?(message: { title: string; body: string }): Promise<void>
   installUpdate(file: UpdateFile): Promise<{ ok: boolean; manual?: boolean; error?: string }>
   /** Linux: the one-time setup, behind the desktop's administrator password window. */
   runSetup?(): Promise<{ ok: boolean; cancelled?: boolean; output: string }>
@@ -135,6 +152,12 @@ export function compareVersions(a: string, b: string): number {
 
 export const OS_NAME: Record<string, string> = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }
 
+/** The name of the screen setting in this Mac's System Settings (macOS 15 renamed it). */
+export function screenSettingName(): string {
+  const major = Number.parseInt(desktop?.osVersion ?? '', 10) || 0
+  return major >= 15 ? 'Screen & System Audio Recording' : 'Screen Recording'
+}
+
 /** What stands between this computer and punching in, in the employee's terms — or null. */
 export function permissionProblem(permissions: DesktopPermissions): string | null {
   if (permissions.setup === 'needed') {
@@ -147,7 +170,7 @@ export function permissionProblem(permissions: DesktopPermissions): string | nul
     return 'To punch in, choose your screen once.'
   }
   if (permissions.screen !== 'granted' || permissions.input !== 'granted') {
-    return 'To punch in, allow Softus Checkin under Screen Recording and Accessibility in System Settings → Privacy & Security.'
+    return `To punch in, allow Softus Checkin under ${screenSettingName()} and Accessibility in System Settings → Privacy & Security.`
   }
   if (permissions.restartNeeded) {
     return 'To punch in, restart the app.'

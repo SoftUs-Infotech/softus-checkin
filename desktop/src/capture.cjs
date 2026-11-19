@@ -27,6 +27,24 @@ const stream = linux ? require('./linux/stream.cjs') : null
 const FINGERPRINT = { width: 96, height: 54 }
 let active = null // the way chosen when sharing started
 
+/*
+  Asking macOS (or Windows) for the screens can hang rather than fail — seen on
+  a Mac whose screen access stopped mid-day. A look that takes this long counts
+  as "could not see the screen", so a hung request never holds up the next one
+  or the screenshot schedule.
+*/
+const LOOK_TIMEOUT_MS = 10_000
+
+function withTimeout(promise, ms) {
+  let timer
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('The screen did not answer in time.')), ms)
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
+
 /** desktop | grim | portal | stream */
 async function method() {
   // Tests can force one way (SOFTUS_CAPTURE_METHOD=stream, …).
@@ -62,10 +80,13 @@ async function desktopScreens(maxWidth) {
   const widest = Math.max(...displays.map((d) => Math.round(d.size.width * d.scaleFactor)))
   const tallest = Math.max(...displays.map((d) => Math.round(d.size.height * d.scaleFactor)))
   const scale = Math.min(1, maxWidth / widest)
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: { width: Math.round(widest * scale), height: Math.round(tallest * scale) },
-  })
+  const sources = await withTimeout(
+    desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: Math.round(widest * scale), height: Math.round(tallest * scale) },
+    }),
+    LOOK_TIMEOUT_MS,
+  )
   const out = []
   sources.forEach((source, index) => {
     const image = source.thumbnail
@@ -86,12 +107,26 @@ async function desktopScreens(maxWidth) {
 }
 
 async function desktopImages() {
-  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: FINGERPRINT })
+  const sources = await withTimeout(
+    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: FINGERPRINT }),
+    LOOK_TIMEOUT_MS,
+  )
   return sources.map((source) => source.thumbnail).filter((image) => image && !image.isEmpty())
+}
+
+/*
+  Tests only: while the file named by SOFTUS_TEST_BLIND_FILE exists, the app
+  sees no screen — the way a Mac does when its screen access stops. It can
+  only ever end a session, never keep one going.
+*/
+function blind() {
+  const file = process.env.SOFTUS_TEST_BLIND_FILE
+  return Boolean(file) && require('node:fs').existsSync(file)
 }
 
 /* ---------------- one interface for all ---------------- */
 async function screens(maxWidth) {
+  if (blind()) return []
   const way = active || (await method())
   if (way === 'portal') return portal.screens(maxWidth)
   if (way === 'grim') return grim.screens(maxWidth)
@@ -101,6 +136,7 @@ async function screens(maxWidth) {
 
 /** Greyscale values of a tiny copy of every display, joined; null if nothing could be read. */
 async function fingerprint() {
+  if (blind()) return null
   const way = active || (await method())
   const images =
     way === 'portal'

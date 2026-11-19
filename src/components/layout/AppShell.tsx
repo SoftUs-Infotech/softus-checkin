@@ -29,6 +29,7 @@ import { orgNowParts, orgTimeZoneName, setOrgTimeZone } from '@/lib/format'
 import { useAuth } from '@/store/auth'
 import { ScreenCaptureManager } from '@/features/wfh/ScreenCaptureManager'
 import { UpdatePrompt } from '@/features/desktop/UpdatePrompt'
+import { CaptureProblemPrompt } from '@/features/desktop/CaptureProblemPrompt'
 import { NotificationPanel } from './NotificationPanel'
 
 interface NavItem {
@@ -289,6 +290,7 @@ export function AppShell() {
                 asks for it back if it stops mid-day. Renders nothing otherwise. */}
             {hasPersonalSpace() && <ScreenCaptureManager />}
             <UpdatePrompt />
+            <CaptureProblemPrompt />
             <Outlet />
           </div>
         </main>

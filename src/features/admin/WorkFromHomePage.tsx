@@ -21,6 +21,7 @@ import {
 } from '@/components/ui'
 import { windowFor } from '@/lib/activity'
 import { ActivitySummary, ShotActivity } from './ActivityPanel'
+import { AppLogPanel } from './AppLogPanel'
 import type {
   ActivityDay,
   Screenshot,
@@ -331,6 +332,7 @@ export function WorkFromHomePage() {
               )}
 
               <ActivitySummary day={activity.data} />
+              {selectedId && <AppLogPanel userId={selectedId} date={date} />}
 
               <div className="px-5 py-4">
                 {shots.error && <ErrorNote className="mb-3" message={messageOf(shots.error)} />}

@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Check, Monitor, RotateCw, ShieldAlert, Wrench } from 'lucide-react'
-import { desktop, permissionProblem, type DesktopPermissions, type PermissionState } from '@/lib/desktop'
+import {
+  desktop,
+  permissionProblem,
+  screenSettingName,
+  type DesktopPermissions,
+  type PermissionState,
+} from '@/lib/desktop'
 import { Button, ErrorNote } from '@/components/ui'
 
 /*
@@ -62,7 +68,7 @@ export function PermissionsPanel() {
     <Panel title="Before you can punch in">
       <p>Allow Softus Checkin in System Settings → Privacy &amp; Security:</p>
       <ul className="mt-2 space-y-1.5">
-        <Row label="Screen Recording" state={permissions.screen} onAllow={() => allow('screen')} />
+        <Row label={screenSettingName()} state={permissions.screen} onAllow={() => allow('screen')} />
         <Row label="Accessibility" state={permissions.input} onAllow={() => allow('input')} />
       </ul>
       {permissions.restartNeeded && (
@@ -202,7 +208,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   )
 }
 
-function Row({
+export function Row({
   label,
   state,
   onAllow,

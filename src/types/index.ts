@@ -115,6 +115,9 @@ export interface AttendanceSession {
   /** Set when the system ended the session: `SCREEN_SHARE_STOPPED` for somebody
       working from home whose screen stopped being shared. */
   closed_reason?: string | null
+  /** Which loss ended it: `SETTING_OFF`, `SCREEN_NOT_VISIBLE`, `NO_SCREENSHOTS`,
+      `NO_CHECKINS`, `APP_CLOSED`, `SHARING_STOPPED` or `WORK_MODE_CHANGED`. */
+  closed_detail?: string | null
   duration_minutes: number
 }
 
@@ -768,6 +771,16 @@ export interface ActivityWindow extends ActivityFigures {
   active_percent: number
   level: 'high' | 'medium' | 'low'
   flags: ActivityFlag[]
+}
+
+/** One line of a work-from-home employee's app log (administrators only). */
+export interface AppLogEntry {
+  at: string
+  /** Set for a span, such as the screen being locked until then. */
+  until?: string | null
+  kind: string
+  source: 'app' | 'server'
+  message: string
 }
 
 export interface ActivityDay {
