@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Download } from 'lucide-react'
 import { resolveApiUrl } from '@/lib/api'
 import { desktop, updateKind, type UpdateProgress } from '@/lib/desktop'
-import { useUpdatePrompt } from '@/lib/updates'
+import { offerUpdate, UPDATE_CHECK_EVERY_MS, useUpdatePrompt } from '@/lib/updates'
+import { useAuth } from '@/store/auth'
 import { Button, ErrorNote, Modal } from '@/components/ui'
 
 function megabytes(bytes: number): string {
@@ -10,18 +11,30 @@ function megabytes(bytes: number): string {
 }
 
 /*
-  Shown when "punch in" finds a newer published version. The app downloads it,
-  checks it is exactly the file the admin published, replaces itself and
-  restarts — then the employee punches in on the new version.
+  Shown when "punch in" finds a newer published version, and when the app opens
+  (or every half hour while it is open) and one is waiting. The app downloads
+  it, checks it is exactly the file the admin published, replaces itself and
+  restarts — on the new version.
 */
 export function UpdatePrompt() {
-  const { release, close } = useUpdatePrompt()
+  const { release, forPunch, close } = useUpdatePrompt()
+  const canPunch = useAuth((state) => state.hasPersonalSpace())
   const [progress, setProgress] = useState<UpdateProgress | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [manual, setManual] = useState(false)
 
   useEffect(() => desktop?.onUpdateProgress(setProgress), [])
+  useEffect(() => {
+    if (!desktop) return
+    // A moment after the screens are up, then every half hour.
+    const first = window.setTimeout(() => void offerUpdate(canPunch), 3000)
+    const every = window.setInterval(() => void offerUpdate(canPunch), UPDATE_CHECK_EVERY_MS)
+    return () => {
+      window.clearTimeout(first)
+      window.clearInterval(every)
+    }
+  }, [canPunch])
   useEffect(() => {
     // A different release opened the prompt: start clean.
     setProgress(null)
@@ -93,7 +106,7 @@ export function UpdatePrompt() {
       }
     >
       <div className="space-y-3 text-[13px] text-ink-600">
-        <p>Update the app to punch in.</p>
+        <p>{forPunch ? 'Update the app to punch in.' : 'Update now: the app restarts by itself in a few seconds.'}</p>
         {release.notes && (
           <p className="rounded-lg border border-rule bg-ink-50/70 px-3 py-2 whitespace-pre-line">
             {release.notes}
