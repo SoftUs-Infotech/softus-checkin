@@ -397,6 +397,9 @@ function sendHeartbeat() {
   computer (not locked, not away, not asleep) ends it too. Either way the
   session ends at the last moment the screen was seen, the window comes to the
   front, and the popup asks for the setting — nothing more.
+
+  Ten minutes without any use of the keyboard or mouse (the screen locked
+  that long counts) ends the session at the last use, with "Your PC was idle".
 */
 const WATCH_EVERY_MS = 15_000
 const UNSEEN_LIMIT_MS = 60_000
@@ -413,6 +416,7 @@ async function watchDesktop(): Promise<void> {
   if (desktop.platform === 'darwin' && health.input !== 'granted') {
     return captureLost('SETTING_OFF', health, 'input')
   }
+  if (health.idleSince) return captureLost('IDLE', health)
   if (health.unseenMs >= UNSEEN_LIMIT_MS) return captureLost('SCREEN_NOT_VISIBLE', health)
 }
 
@@ -432,16 +436,19 @@ async function captureLost(
         reported: health.screen === 'granted' ? 'on' : 'off',
       })
     }
-    void desktop.reportCaptureLost?.()
+    // Idle is not a lost screen: nothing to restart for on macOS.
+    if (reason !== 'IDLE') void desktop.reportCaptureLost?.()
+    const at = (reason === 'IDLE' ? health.idleSince : health.lastSeenAt) ?? new Date().toISOString()
+    const minutes = Math.max(1, Math.floor((Date.now() - Date.parse(at)) / 60_000))
     try {
-      await reportStopped({ reason, at: health.lastSeenAt ?? new Date().toISOString(), setting })
+      await reportStopped({ reason, at, setting })
     } catch {
       // The capture manager says so again, and the server notices the silence.
     }
     stopCapture()
     set({ lostAt: Date.now() })
-    useCaptureProblem.getState().show({ reason, punchedOut: true })
-    void desktop.attention?.({ title: 'Softus Checkin', body: problemNotice(desktop.platform) })
+    useCaptureProblem.getState().show({ reason, punchedOut: true, minutes })
+    void desktop.attention?.({ title: 'Softus Checkin', body: problemNotice(desktop.platform, reason, minutes) })
   } finally {
     losing = false
   }
@@ -502,8 +509,8 @@ export function stopSchedule() {
 
 /** Why the screen went, as the server takes it. */
 export interface StoppedReport {
-  reason: 'SETTING_OFF' | 'SCREEN_NOT_VISIBLE' | 'APP_CLOSED' | 'SHARING_STOPPED'
-  /** The last moment the screen was visible; the session ends there. */
+  reason: 'SETTING_OFF' | 'SCREEN_NOT_VISIBLE' | 'IDLE' | 'APP_CLOSED' | 'SHARING_STOPPED'
+  /** The last moment the screen was visible (IDLE: the last use); the session ends there. */
   at?: string
   setting?: 'screen' | 'input'
 }

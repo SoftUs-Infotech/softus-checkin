@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { RotateCw, Settings } from 'lucide-react'
 import { logEvent } from '@/lib/appLog'
-import { problemTitle, useCaptureProblem } from '@/lib/captureProblem'
+import { minutesText, problemTitle, useCaptureProblem } from '@/lib/captureProblem'
 import { desktop, screenSettingName, type DesktopPermissions } from '@/lib/desktop'
 import { Button, Modal } from '@/components/ui'
 import { Row } from './PermissionsPanel'
 
 /*
+  Idle: "Your PC was idle for 10 minutes, so you have been punched out.
+  Please punch in again." — and OK.
+
   "Please allow this setting" — shown by the desktop app when it punched
   somebody out because it lost the screen, or when a punch-in failed because it
   could not see the screen. It says only which setting to allow (and, where
@@ -18,17 +21,17 @@ import { Row } from './PermissionsPanel'
   what fixes it.
 */
 export function CaptureProblemPrompt() {
-  const { open, reason, punchedOut, close } = useCaptureProblem()
+  const { open, reason, punchedOut, minutes, close } = useCaptureProblem()
   const [permissions, setPermissions] = useState<DesktopPermissions | null>(null)
   const platform = desktop?.platform
-  const title = problemTitle(platform)
+  const title = problemTitle(platform, reason)
 
   useEffect(() => {
     if (open) logEvent('POPUP_SHOWN', { title })
   }, [open, title])
 
   useEffect(() => {
-    if (!open || !desktop || platform !== 'darwin') return
+    if (!open || !desktop || platform !== 'darwin' || reason === 'IDLE') return
     const bridge = desktop
     let cancelled = false
     const read = () =>
@@ -42,10 +45,20 @@ export function CaptureProblemPrompt() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [open, platform])
+  }, [open, platform, reason])
 
   if (!desktop || !open) return null
   const bridge = desktop
+
+  if (reason === 'IDLE') {
+    return (
+      <Modal open onClose={close} title={title} footer={<Button onClick={close}>OK</Button>}>
+        <p className="text-[13px] text-ink-600" data-testid="idle-popup">
+          Your PC was idle for {minutesText(minutes)}, so you have been punched out. Please punch in again.
+        </p>
+      </Modal>
+    )
+  }
 
   async function allow(kind: 'screen' | 'input') {
     setPermissions(await bridge.requestPermission(kind))

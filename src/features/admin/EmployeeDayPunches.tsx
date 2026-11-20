@@ -8,6 +8,8 @@ import { cn } from '@/lib/cn'
 import { SCREEN_SHARE_STOPPED } from '@/lib/punch'
 import { Badge, Button, ErrorNote, Input, Skeleton } from '@/components/ui'
 import type { AttendanceDay, AttendanceSession, DayBreak, User } from '@/types'
+import { HourLabels, HourLines, Legend, Swatch, type LegendItem } from './Timeline'
+import { clock, spanStyle, timeScale } from './timeScale'
 
 /** `2026-11-16` moved by `days`, as a date key. */
 function shiftDay(key: string, days: number): string {
@@ -176,7 +178,7 @@ function DayDetail({
         />
         {(record.unshared_minutes ?? 0) > 0 && (
           <Figure
-            term="Away — sharing stopped"
+            term="Away — punched out automatically"
             value={formatMinutes(record.unshared_minutes ?? 0)}
           />
         )}
@@ -221,10 +223,49 @@ function Figure({ term, value }: { term: string; value: string }) {
   )
 }
 
+/** Why the system punched somebody out, for the administrator. */
+const AUTO_OUT_REASON: Record<string, string> = {
+  IDLE: 'PC idle',
+  SETTING_OFF: 'a setting was turned off',
+  SCREEN_NOT_VISIBLE: 'screen could not be seen',
+  NO_SCREENSHOTS: 'no screenshots',
+  NO_CHECKINS: 'app stopped checking in',
+  APP_CLOSED: 'app closed',
+  SHARING_STOPPED: 'sharing stopped',
+  WORK_MODE_CHANGED: 'switched to work from home',
+}
+
+function autoOutReason(detail?: string | null): string {
+  return AUTO_OUT_REASON[detail ?? ''] ?? 'sharing stopped'
+}
+
+const at = (iso: string) => new Date(iso).getTime()
+
+/** A punch in or out, above the bar; red when the system punched them out. */
+function Marker({ auto = false }: { auto?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'block size-0 border-x-[4px] border-t-[6px] border-x-transparent',
+        auto ? 'border-t-status-red' : 'border-t-ink-700',
+      )}
+    />
+  )
+}
+
+interface Piece {
+  from: number
+  to: number
+  className: string
+  label: string
+}
+
 /*
-  The day as one bar, from the first punch-in to the last punch-out: stretches
-  of work in ink, breaks as paper, and time away after sharing stopped hatched,
-  so a choppy afternoon is visible at a glance.
+  The day on a timeline: the hours across the top, a mark at every punch-in
+  and punch-out, work in ink, breaks in grey, time away after the system
+  punched them out in red, and a line at now. Hover a piece for its times; the
+  list below says the same in words.
 */
 function DayBar({
   sessions,
@@ -235,51 +276,94 @@ function DayBar({
   breaks: DayBreak[]
   until: number | null
 }) {
-  const start = new Date(sessions[0].punch_in.at).getTime()
+  const first = at(sessions[0].punch_in.at)
   const ends = sessions
-    .map((session) => (session.punch_out ? new Date(session.punch_out.at).getTime() : until))
+    .map((session) => (session.punch_out ? at(session.punch_out.at) : until))
     .filter((value): value is number => value !== null)
-  const end = Math.max(start + 60_000, ...ends)
-  const span = end - start
-  const place = (from: number, to: number) => ({
-    left: `${((from - start) / span) * 100}%`,
-    width: `${Math.max(0.4, ((to - from) / span) * 100)}%`,
-  })
+  const scale = timeScale(first, Math.max(first + 60_000, ...ends))
+
+  const pieces: Piece[] = []
+  const marks: { at: number; auto: boolean; label: string }[] = []
+  for (const session of sessions) {
+    const from = at(session.punch_in.at)
+    const to = session.punch_out ? at(session.punch_out.at) : until
+    marks.push({ at: from, auto: false, label: `Punched in ${clock(from)}` })
+    if (to === null) continue
+    pieces.push({
+      from,
+      to,
+      className: 'bg-ink-800',
+      label: `Worked · ${clock(from)} – ${session.punch_out ? clock(to) : 'now'} · ${formatMinutes(Math.round((to - from) / 60_000))}`,
+    })
+    if (!session.punch_out) continue
+    const auto = session.closed_reason === SCREEN_SHARE_STOPPED
+    marks.push({
+      at: to,
+      auto,
+      label: auto
+        ? `Punched out automatically ${clock(to)} — ${autoOutReason(session.closed_detail)}`
+        : `Punched out ${clock(to)}`,
+    })
+  }
+  for (const gap of breaks) {
+    const away = gap.kind === SCREEN_SHARE_STOPPED
+    pieces.push({
+      from: at(gap.start),
+      to: at(gap.end),
+      className: away ? 'bg-status-red/60' : 'bg-ink-300',
+      label: `${away ? `Away — ${autoOutReason(gap.detail)}` : 'Break'} · ${formatTime(gap.start)} – ${formatTime(gap.end)} · ${formatMinutes(gap.minutes)}`,
+    })
+  }
+
+  const legend: LegendItem[] = [
+    { swatch: <Swatch className="bg-ink-800" />, label: 'Worked' },
+    { swatch: <Swatch className="bg-ink-300" />, label: 'Break' },
+  ]
+  if (breaks.some((gap) => gap.kind === SCREEN_SHARE_STOPPED)) {
+    legend.push({ swatch: <Swatch className="bg-status-red/60" />, label: 'Away after an automatic punch-out' })
+  }
+  legend.push({ swatch: <Marker />, label: 'Punch in / out' })
+  if (marks.some((mark) => mark.auto)) legend.push({ swatch: <Marker auto />, label: 'Punched out automatically' })
+  if (until !== null) {
+    legend.push({ swatch: <span aria-hidden className="h-3 w-0.5 rounded-full bg-status-blue" />, label: 'Now' })
+  }
 
   return (
-    <div>
-      <div className="relative h-3 overflow-hidden rounded-full bg-ink-50" aria-hidden>
-        {sessions.map((session) => {
-          const from = new Date(session.punch_in.at).getTime()
-          const to = session.punch_out ? new Date(session.punch_out.at).getTime() : until
-          if (to === null) return null
-          return (
+    <figure data-testid="day-timeline" aria-label="The day on a timeline; the list below gives every punch in and out">
+      <HourLabels scale={scale} />
+      <div className="relative h-7">
+        <span aria-hidden className="absolute inset-x-0 bottom-0 h-4 rounded-[4px] bg-ink-50" />
+        <HourLines scale={scale} className="inset-y-0" />
+        <div className="absolute inset-x-0 bottom-0 h-4">
+          {pieces.map((piece) => (
             <span
-              key={session.punch_in.at}
-              className="absolute inset-y-0 bg-ink-800"
-              style={place(from, to)}
-            />
-          )
-        })}
-        {breaks
-          .filter((gap) => gap.kind === SCREEN_SHARE_STOPPED)
-          .map((gap) => (
-            <span
-              key={gap.start}
-              className="absolute inset-y-0"
-              style={{
-                ...place(new Date(gap.start).getTime(), new Date(gap.end).getTime()),
-                background:
-                  'repeating-linear-gradient(135deg, var(--color-ink-300) 0 3px, transparent 3px 6px)',
-              }}
+              key={`${piece.from}-${piece.className}`}
+              title={piece.label}
+              className={cn('absolute inset-y-0 rounded-[3px]', piece.className)}
+              style={spanStyle(scale, piece.from, piece.to)}
             />
           ))}
+        </div>
+        {marks.map((mark) => (
+          <span
+            key={`${mark.at}-${mark.label}`}
+            title={mark.label}
+            className="absolute top-0 -translate-x-1/2 px-1"
+            style={{ left: `${scale.at(mark.at)}%` }}
+          >
+            <Marker auto={mark.auto} />
+          </span>
+        ))}
+        {until !== null && (
+          <span
+            title={`Now ${clock(until)}`}
+            className="absolute inset-y-0 w-0.5 -translate-x-1/2 rounded-full bg-status-blue"
+            style={{ left: `${scale.at(until)}%` }}
+          />
+        )}
       </div>
-      <div className="tabular mt-1 flex justify-between text-[11px] text-ink-400">
-        <span>{formatTime(new Date(start).toISOString())}</span>
-        <span>{until ? 'now' : formatTime(new Date(end).toISOString())}</span>
-      </div>
-    </div>
+      <Legend items={legend} />
+    </figure>
   )
 }
 
@@ -297,7 +381,7 @@ function SessionRows({
   const stoppedSharing = session.closed_reason === SCREEN_SHARE_STOPPED
   const outcome = session.punch_out
     ? stoppedSharing
-      ? `Punched out automatically — screen sharing stopped · worked ${formatMinutes(session.duration_minutes)}`
+      ? `Punched out automatically — ${autoOutReason(session.closed_detail)} · worked ${formatMinutes(session.duration_minutes)}`
       : `Worked ${formatMinutes(session.duration_minutes)}`
     : session.auto_closed
       ? 'Never punched out'
@@ -342,7 +426,7 @@ function SessionRows({
           </span>
           <span className="tabular">
             <span className="font-semibold text-ink-700">
-              {gap.kind === SCREEN_SHARE_STOPPED ? 'Away — sharing stopped' : 'Break'} ·{' '}
+              {gap.kind === SCREEN_SHARE_STOPPED ? `Away — ${autoOutReason(gap.detail)}` : 'Break'} ·{' '}
               {formatMinutes(gap.minutes)}
             </span>{' '}
             ({formatTime(gap.start)} – {formatTime(gap.end)})

@@ -189,6 +189,17 @@ The server backs this up whatever the app does: no screenshot for 2 intervals
 Everything is written to the **app log**, which admins see on the Work from
 home page under the person's day.
 
+## When nobody uses the computer
+
+Ten minutes with no keyboard or mouse use at all — not a key, a click, a
+scroll or the pointer moving — ends the session at the last use, so the idle
+minutes are not counted as work. A screen locked for ten minutes counts as
+idle too, and a computer that slept for more than ten minutes is punched out
+as soon as it wakes (the session ends before it slept). The window comes to
+the front with "Your PC was idle for 10 minutes, so you have been punched out.
+Please punch in again." and OK. The app log says "no keyboard or mouse use for
+10 min".
+
 ## Running it while developing
 
 ```bash
@@ -202,6 +213,11 @@ The backend has to allow the app's address: add `app://softus` to
 `SOFTUS_HELPER_SOCKET=/some/path` points at another helper (both used by the tests).
 `SOFTUS_TEST_BLIND_FILE=/some/file` makes the app see no screen while that
 file exists, to test losing the screen (it can only end a session).
+`SOFTUS_TEST_IDLE_SECONDS=60` shortens the 10 idle minutes for a test (only when
+run from source, never the installed app, and only ever shorter). On a Linux
+computer with the activity helper installed, set `SOFTUS_HELPER_SOCKET` to a
+missing path for idle tests: the helper reads this computer's real keyboard and
+mouse, so your own typing would count as use.
 
 If the app starts as plain Node with `TypeError: Cannot read properties of
 undefined`, the shell has `ELECTRON_RUN_AS_NODE` set (VS Code's terminal does):

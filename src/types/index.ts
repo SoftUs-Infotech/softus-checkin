@@ -116,7 +116,7 @@ export interface AttendanceSession {
       working from home whose screen stopped being shared. */
   closed_reason?: string | null
   /** Which loss ended it: `SETTING_OFF`, `SCREEN_NOT_VISIBLE`, `NO_SCREENSHOTS`,
-      `NO_CHECKINS`, `APP_CLOSED`, `SHARING_STOPPED` or `WORK_MODE_CHANGED`. */
+      `NO_CHECKINS`, `APP_CLOSED`, `SHARING_STOPPED`, `WORK_MODE_CHANGED` or `IDLE`. */
   closed_detail?: string | null
   duration_minutes: number
 }
@@ -129,6 +129,8 @@ export interface DayBreak {
   /** `BREAK` when they punched out themselves; `SCREEN_SHARE_STOPPED` when the
       system punched somebody working from home out because sharing stopped. */
   kind: 'BREAK' | 'SCREEN_SHARE_STOPPED'
+  /** For `SCREEN_SHARE_STOPPED`: why the system punched them out (`IDLE`, `SETTING_OFF`, …). */
+  detail?: string | null
 }
 
 export interface AttendanceDay {

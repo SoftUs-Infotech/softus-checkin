@@ -55,6 +55,37 @@ let excusedBy = null // why the last excused second was: locked | away | asleep
 let lastTickAt = 0
 let looking = false
 
+/*
+  Idle: no use of the keyboard or mouse at all — not a key, a click, a scroll
+  or the pointer moving — for ten minutes. A screen locked that long is idle
+  too (input on the lock screen does not count). The screens then punch out,
+  and the session ends at the last use. Once idle, it stays so until that
+  punch-out: a computer woken from sleep and used at once is still caught.
+*/
+const IDLE_LIMIT_MS = idleLimit()
+let lastUseAt = 0
+let idleSince = 0
+
+function idleLimit() {
+  const normal = 10 * 60_000
+  // Tests only (never the installed app), and only ever shorter.
+  const seconds = Number(process.env.SOFTUS_TEST_IDLE_SECONDS)
+  const { app } = require('electron')
+  if (!app.isPackaged && seconds > 0) return Math.min(normal, seconds * 1000)
+  return normal
+}
+
+/** The keyboard or mouse was used at `at`. */
+function used(at) {
+  if (!running || locked) return
+  if (!idleSince && lastUseAt && at - lastUseAt >= IDLE_LIMIT_MS) idleSince = lastUseAt
+  if (at > lastUseAt) lastUseAt = at
+}
+
+function checkIdle(now) {
+  if (running && !idleSince && now - lastUseAt >= IDLE_LIMIT_MS) idleSince = lastUseAt
+}
+
 function bucketFor(now) {
   const start = Math.floor(now / 60_000) * 60_000
   if (!current || current.start !== start) {
@@ -95,6 +126,7 @@ function finish(bucket) {
 /* ---------------- the input hook (macOS, Windows, Linux Xorg without the helper) ---------------- */
 function input() {
   lastInputAt = Date.now()
+  used(lastInputAt)
   return bucketFor(lastInputAt)
 }
 const onKey = () => {
@@ -132,7 +164,10 @@ function onHelperSecond(second) {
   bucket.distance += second.distance || 0
   if (second.active && !locked) bucket.active += 1
   if (second.virtual > 0) bucket.virtual += 1
-  if (second.active) lastInputAt = second.t * 1000
+  if (second.active) {
+    lastInputAt = second.t * 1000
+    used(lastInputAt)
+  }
 }
 
 /* ---------------- every second: locked, and active time for the hook ---------------- */
@@ -165,6 +200,9 @@ async function everySecond() {
   lastTickAt = now
   locked = await isLocked()
   if (!running) return
+  // First, before anything this second counts as use: asleep or locked, the
+  // time since the last use keeps running.
+  checkIdle(now)
   const bucket = bucketFor(now)
   if (locked) {
     excusedAt = now
@@ -182,6 +220,8 @@ async function everySecond() {
   // says so on macOS, Windows and Xorg; on Wayland it is always 0, so the
   // input the activity helper counted decides there.
   const wayland = linux && session.sessionType() === 'wayland'
+  // The system's own idle time also catches use the input hook missed.
+  if (!wayland && idleSeconds !== null) used(now - idleSeconds * 1000)
   const idleFor = wayland || idleSeconds === null ? (now - lastInputAt) / 1000 : idleSeconds
   if (idleFor >= AWAY_SECONDS) {
     excusedAt = now
@@ -223,6 +263,8 @@ function health() {
     unseenMs: Math.max(0, now - Math.max(lastSeenAt, excusedAt)),
     lastSeenAt: new Date(lastSeenAt).toISOString(),
     excusedBy: excusedAt > lastSeenAt ? excusedBy : null,
+    idleSince: idleSince ? new Date(idleSince).toISOString() : null,
+    idleLimitMs: IDLE_LIMIT_MS,
   }
 }
 
@@ -258,6 +300,8 @@ async function start({ interactive = true } = {}) {
   lastPointer = null
   previousFingerprint = null
   lastSeenAt = Date.now()
+  lastUseAt = lastSeenAt
+  idleSince = 0
   excusedAt = 0
   lastTickAt = 0
   powerMonitor.on('lock-screen', onLockEvent)

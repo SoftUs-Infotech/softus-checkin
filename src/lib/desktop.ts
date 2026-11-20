@@ -72,6 +72,9 @@ export interface CaptureHealth {
   unseenMs: number
   /** The last moment it was seen. */
   lastSeenAt: string | null
+  /** Set once nobody has used the keyboard or mouse for `idleLimitMs`: the last use. */
+  idleSince?: string | null
+  idleLimitMs?: number
   /** The permissions as the operating system reports them now (macOS). */
   screen: PermissionState
   input: PermissionState

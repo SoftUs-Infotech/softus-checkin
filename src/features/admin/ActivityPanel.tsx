@@ -2,6 +2,8 @@ import { Activity } from 'lucide-react'
 import { formatMinutes, formatTime } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { Badge } from '@/components/ui'
+import { HourLabels, HourLines, Legend, Swatch } from './Timeline'
+import { spanStyle, timeScale } from './timeScale'
 import type { ActivityDay, ActivityFlag, ActivityWindow } from '@/types'
 
 /*
@@ -66,22 +68,63 @@ export function ActivitySummary({ day }: { day: ActivityDay | undefined }) {
           {flagged.length ? `${flagged.length} window${flagged.length === 1 ? '' : 's'} to check` : 'Nothing flagged'}
         </span>
       </div>
-      {/* One bar per window across the day: height is activity, colour its level. */}
-      <div className="mt-2 flex h-8 items-end gap-px" aria-label="Activity through the day">
-        {day.windows.map((window) => (
-          <div
+      <ActivityTimeline windows={day.windows} />
+    </div>
+  )
+}
+
+/*
+  One bar per window on the day's timeline: where it sits is when, its height
+  how much of it was active, its colour the level, and a red ring a window to
+  check. Hover a bar for its figures; the screenshots below carry the same.
+*/
+function ActivityTimeline({ windows }: { windows: ActivityWindow[] }) {
+  if (!windows.length) return null
+  const start = new Date(windows[0].start).getTime()
+  const end = new Date(windows[windows.length - 1].end).getTime()
+  const scale = timeScale(start, end)
+  const flagged = windows.some((window) => window.flags.length > 0)
+  return (
+    <figure className="mt-3" data-testid="activity-timeline" aria-label="Activity through the day">
+      <div className="relative h-10">
+        <HourLines scale={scale} className="inset-y-0" />
+        <span aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-ink-200" />
+        {windows.map((window) => (
+          <span
             key={window.start}
             title={`${formatTime(window.start)}–${formatTime(window.end)}: active ${window.active_percent}%, ${count(window.keys)} keys, ${count(window.clicks)} clicks${window.flags.length ? ` — ${window.flags.map((flag) => FLAG_LABEL[flag]).join(', ')}` : ''}`}
             className={cn(
-              'min-w-1 flex-1 rounded-sm',
+              'absolute bottom-0 rounded-t-[3px]',
               LEVEL_BAR[window.level],
               window.flags.length > 0 && 'ring-1 ring-status-red ring-offset-1',
             )}
-            style={{ height: `${Math.max(8, window.active_percent)}%` }}
+            style={{
+              ...spanStyle(scale, new Date(window.start).getTime(), new Date(window.end).getTime()),
+              height: `${Math.max(8, window.active_percent)}%`,
+            }}
           />
         ))}
       </div>
-    </div>
+      <div className="mt-1">
+        <HourLabels scale={scale} />
+      </div>
+      <Legend
+        items={[
+          { swatch: <Swatch className="bg-status-green" />, label: 'High activity (50%+)' },
+          { swatch: <Swatch className="bg-status-amber" />, label: 'Medium (20–49%)' },
+          { swatch: <Swatch className="bg-status-red" />, label: 'Low (under 20%)' },
+          ...(flagged
+            ? [
+                {
+                  swatch: <Swatch className="bg-white ring-1 ring-status-red ring-offset-1" />,
+                  label: 'To check — hover the bar for why',
+                },
+              ]
+            : []),
+        ]}
+      />
+      <p className="mt-1 text-[11px] text-ink-400">Bar height: how much of the window was active.</p>
+    </figure>
   )
 }
 
